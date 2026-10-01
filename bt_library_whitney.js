@@ -20,7 +20,8 @@ const CFG = {
   NPC_MAX: 2,            // other tracked characters go into the AI's note only while their name is in the recent story, at most this many
   HIDE_PLAYER: false,   // true = you are not tracked, only the characters below (unnamed commands and tags then go to the first one)
   CHARACTERS: [],       // characters that exist from the first turn: { name, start: { weight: 70, ... }, pattern, look, bonus: { cha: 2 } } (see presets/)
-  AUTO: true,            // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
+  YOU_NAME: '',          // who "you" means in the AI's narration when your own sheet is hidden, e.g. 'Rue'. Empty = "you" is not attributed
+  AUTO: true,           // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
   STATUS: 'commands',    // add a status line to the reply: 'off' | 'commands' (commands and spotted actions) | 'always'
   CARD_READBACK: false,  // read hand edits of the Body sheet story card back into the tracker
   // starting body (measurements in cm, weight in kg, gland = glandular tissue in cc per breast)
@@ -635,10 +636,11 @@ const MEALS = { breakfast: 450, brunch: 600, lunch: 600, dinner: 700, supper: 70
 const QTY = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, few: 3, several: 3, both: 2 }
 const STRONG_EAT = ['eat', 'eats', 'ate', 'eating', 'eaten', 'devour', 'devours', 'gulp', 'swallow', 'chew', 'munch', 'nibble', 'bite', 'drink', 'drinks', 'drank', 'sip', 'chug', 'consume', 'scarf', 'stuff', 'wolf', 'feast', 'dine', 'inhale', 'gorge', 'binge', 'feed', 'feeds', 'fed']
 const WEAK_EAT = ['have', 'having', 'take', 'grab', 'try', 'taste', 'sample', 'finish', 'pour', 'order', 'get', 'grab', 'help', 'mix', 'make', 'cook', 'polish', 'share', 'split', 'serve', 'offer', 'give', 'hand', 'has', 'had']
-function detectAte(text) {
-  const toks = tokensOf(text)
+function detectAte(text) { return detectAteInfo(text, false).kcal }
+function detectAteInfo(text, force) {   // force: the caller already knows this sentence starts a meal, so no eating verb is needed
+  const toks = tokensOf(text), foods = [], labels = [], parts = []
   const strong = findTok(toks, STRONG_EAT) >= 0, weak = findTok(toks, WEAK_EAT) >= 0
-  if (!strong && !weak) return 0
+  if (!strong && !weak && !force) return { kcal: 0, foods: foods, label: '', parts: parts }
   let total = 0, found = false
   const qtyBefore = (i) => {   // nearest quantity word in the few words before the food
     for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
@@ -652,6 +654,8 @@ function detectAte(text) {
     const i = findTok(toks, f[0])
     if (i < 0) return
     found = true
+    foods.push(f[0][0])
+    labels.push(toks[i])
     const q = qtyBefore(i)
     let kcal = f[1]
     if (q) {
@@ -661,12 +665,13 @@ function detectAte(text) {
       else kcal = f[2] ? f[2] : f[1] * 4   // whole / entire / all
     }
     total += kcal
+    parts.push({ food: f[0][0], kcal: kcal, label: toks[i] })
   })
   Object.keys(MEALS).forEach((w) => {
-    if (findTok(toks, [w]) >= 0 && !found) { found = true; total += MEALS[w] }
+    if (findTok(toks, [w]) >= 0 && !found) { found = true; total += MEALS[w]; foods.push(w); labels.push(w); parts.push({ food: w, kcal: MEALS[w], label: w }) }
   })
-  if (!found) return strong ? 400 : 0   // "I eat" with no food named counts as a plain meal; "I have" alone does not
-  return Math.round(Math.min(total, 5000))
+  if (!found) return { kcal: strong ? 400 : 0, foods: [], label: 'a meal', parts: parts }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  return { kcal: Math.round(Math.min(total, 5000)), foods: foods, label: labels.map((l) => (/s$/.test(l) ? l : 'a ' + l)).join(' and '), parts: parts }
 }
 
 const EX_LEGS = ['squat', 'squats', 'lunge', 'lunges', 'calf', 'legpress']
@@ -722,7 +727,7 @@ function autoDetectAll(text) {
   keys.forEach((k) => {
     const s = sheetOf(k)
     if (!s) return
-    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true }
+    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true; s.lastAuto = { kcal: Math.min(kcal, 5000), label: 'what you typed' } }
     if (ex) {
       ev.push({ type: 'burn', n: ex.burn, who: k }); s.auto.burn = true
       ex.regions.forEach((r) => { ev.push({ type: 'train', r: r, n: ex.effort, who: k }); s.auto.train = true })
@@ -740,6 +745,70 @@ function autoDetectAll(text) {
   return res
 }
 
+// ---------- spotting meals in the AI's reply (Output tab) ----------
+// Only the start of a meal counts: served, ordered, grabbed, dug into, "eats a ...". Wording that continues or only
+// talks about a meal (another bite, chews, finishes, looks at, wants) does not. A meal goes to a character only when
+// the sentence names them (or says "you" and the player has a sheet), otherwise nothing is counted. All sentences
+// about one meal in a reply are merged and counted once, and the same character + food word is not counted again
+// for NARRATE_COOLDOWN actions, so order, arrival, bites and "devours the rest" over several replies are one meal.
+const NARRATE_COOLDOWN = 3
+const START_RE = /\b(?:arrives?|arrived|orders?|ordered|ordering|grabs?|grabbed|digs? into|dug into|tucks? into|starts? (?:on|eating)|begins? (?:to eat|eating)|brings?|serves?|served|sets? down|slides? (?:over|across)|eats?|ate|helps? (?:herself|himself|themselves) to|picks? up)\b/i
+const CONT_RE = /\b(?:another (?:bite|nibble|sip|taste|piece|forkful|spoonful)|takes? (?:a|one|the) (?:bite|nibble|sip|taste)|bites? into|chews?|chewing|savou?rs?|savou?ring|finish(?:es|ed)?|the rest|last (?:bite|piece|crumb)|licks?|swallows?|polish(?:es|ed)? off|wipes?|leftovers?|looks? (?:at|down)|stares?|eyes|smells?|watch(?:es|ed)|admires?|considers?|wants?|wonders?)\b/i
+
+function narratedEaters(sent) {   // keys of the characters this sentence is about; [] means do not guess
+  const names = namesIn(sent)
+  if (names.length > 1) return /\b(?:both|together|and|share|shares)\b/i.test(sent) ? names : []
+  if (names.length === 1) return names
+  if (/\byou(?:r|rs)?\b/i.test(sent)) {
+    const you = CFG.YOU_NAME && state.npcs[CFG.YOU_NAME.toLowerCase()] ? CFG.YOU_NAME.toLowerCase() : ''
+    if (you) return [you]
+    if (!state.bt_hideYou) return ['']
+  }
+  return []
+}
+function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
+  const found = {}
+  const sentences = text.replace(/\[[^\]]*\]/g, ' ').replace(/\.{2,}|…/g, ' ').split(/(?<=[.!?])\s+|[;\n]+/)
+  sentences.forEach((sent) => {
+    const at = sent.search(CONT_RE)
+    const head = at >= 0 ? sent.slice(0, at) : sent   // what happens before "takes another bite" still counts
+    if (!START_RE.test(head)) return
+    const parts = detectAteInfo(head, true).parts.filter((p) => p.kcal > 0)   // water, tea and typo matches like "waiter" do not count
+    if (!parts.length) return
+    narratedEaters(sent).forEach((k) => {
+      found[k] = found[k] || {}
+      parts.forEach((p) => { found[k][p.food] = p })
+    })
+  })
+  const out = []
+  Object.keys(found).forEach((k) => {
+    const s = sheetOf(k)
+    if (!s || s.auto.ate) return   // already counted this turn by typed text, a command or an AI tag
+    const cool = s.cool || {}
+    const fresh = Object.keys(found[k]).filter((f) => cool[f] === undefined || Math.abs(count - cool[f]) > NARRATE_COOLDOWN).map((f) => found[k][f])
+    if (!fresh.length) return
+    const kcal = fresh.reduce((t, p) => t + p.kcal, 0)
+    out.push({ key: k, kcal: Math.round(Math.min(kcal, 5000)), parts: fresh, label: fresh.map((p) => (/s$/.test(p.label) ? p.label : 'a ' + p.label)).join(' and ') })
+  })
+  return out
+}
+function countNarrated(text) {   // adds the meals found in the AI's reply and returns the status notes
+  const count = typeof info !== 'undefined' && info && typeof info.actionCount === 'number' && info.actionCount > 0 ? info.actionCount : (typeof history !== 'undefined' && history ? history.length : 0)
+  const notes = []
+  narratedMeals(text, count).forEach((o) => {
+    const s = sheetOf(o.key)
+    s.eaten = (s.eaten || 0) + o.kcal
+    s.auto.ate = true
+    s.cool = s.cool || {}
+    o.parts.forEach((p) => { s.cool[p.food] = count })
+    s.lastAuto = { kcal: o.kcal, label: o.label }
+    state.bt_touched = (state.bt_touched || []).concat([o.key])
+    notes.push('Counted: ' + (o.key ? state.npcs[o.key].name : 'You') + ' ate ' + o.label + ' (~' + fmt(o.kcal) + ' kcal). Type :undo meal to remove.')
+  })
+  if (notes.length) state.bt_flag = true
+  return notes
+}
+
 // ---------- commands typed by the player ----------
 const CMD_RE = [
   ['sheetadd', /:sheet[ \t]+add[ \t]+([A-Za-z][\w\-]*)((?:[ \t]+\w+=[\w.\-]+)*)/i],
@@ -747,7 +816,8 @@ const CMD_RE = [
   ['sheetlist', /:sheet[ \t]+list\b/i],
   ['sheetyou', /:sheet[ \t]+you[ \t]+(on|off)/i],
   ['set', /:set[ \t]+(\w+)[ \t]+(-?\d+(?:\.\d+)?)/i],
-  ['eat', /:eat[ \t]+(\d+)/i],
+  ['undomeal', /:undo[ \t]+meal\b/i],
+  ['eat',/:eat[ \t]+(\d+)/i],
   ['burn', /:burn[ \t]+(\d+)/i],
   ['train', /:train[ \t]+(chest|arms|core|glutes|legs)(?:[ \t]+([1-3]))?/i],
   ['day', /:day(?:[ \t]+(\d+))?\b/i],
@@ -772,7 +842,7 @@ function parseCommand(text) {
   }
   return null
 }
-const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
 function runCommand(cmd) {
   const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
   const s = sheetOf(key), m = cmd.m
@@ -789,6 +859,12 @@ function runCommand(cmd) {
       s.eaten = (s.eaten || 0) + n
       note = 'Ate ' + fmt(n) + ' kcal'
       line = '\n> You eat a meal.\n'
+      break
+    }
+    case 'undomeal': {   // takes back the last meal the tracker counted by itself (once per meal)
+      if (s.lastAuto) { s.eaten = Math.max(0, (s.eaten || 0) - s.lastAuto.kcal); note = 'Removed ' + s.lastAuto.label + ' (' + fmt(s.lastAuto.kcal) + ' kcal)'; s.lastAuto = null }
+      else note = 'No auto-counted meal to remove'
+      line = '\n> You think back over what you ate.\n'
       break
     }
     case 'burn': {

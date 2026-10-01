@@ -5,7 +5,8 @@ const CMD_RE = [
   ['sheetlist', /:sheet[ \t]+list\b/i],
   ['sheetyou', /:sheet[ \t]+you[ \t]+(on|off)/i],
   ['set', /:set[ \t]+(\w+)[ \t]+(-?\d+(?:\.\d+)?)/i],
-  ['eat', /:eat[ \t]+(\d+)/i],
+  ['undomeal', /:undo[ \t]+meal\b/i],
+  ['eat',/:eat[ \t]+(\d+)/i],
   ['burn', /:burn[ \t]+(\d+)/i],
   ['train', /:train[ \t]+(chest|arms|core|glutes|legs)(?:[ \t]+([1-3]))?/i],
   ['day', /:day(?:[ \t]+(\d+))?\b/i],
@@ -30,7 +31,7 @@ function parseCommand(text) {
   }
   return null
 }
-const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
 function runCommand(cmd) {
   const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
   const s = sheetOf(key), m = cmd.m
@@ -47,6 +48,12 @@ function runCommand(cmd) {
       s.eaten = (s.eaten || 0) + n
       note = 'Ate ' + fmt(n) + ' kcal'
       line = '\n> You eat a meal.\n'
+      break
+    }
+    case 'undomeal': {   // takes back the last meal the tracker counted by itself (once per meal)
+      if (s.lastAuto) { s.eaten = Math.max(0, (s.eaten || 0) - s.lastAuto.kcal); note = 'Removed ' + s.lastAuto.label + ' (' + fmt(s.lastAuto.kcal) + ' kcal)'; s.lastAuto = null }
+      else note = 'No auto-counted meal to remove'
+      line = '\n> You think back over what you ate.\n'
       break
     }
     case 'burn': {

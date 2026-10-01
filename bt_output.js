@@ -10,6 +10,8 @@ const modifier = (text) => {
 
   const parsed = parseTags(text)
   const notes = applyAll(parsed.events, true)   // skip what the input already counted
+  const clean0 = parsed.clean.trim() ? parsed.clean : text
+  countNarrated(clean0).forEach((n) => notes.push(n))   // meals the AI narrated without a tag, unless already counted this turn
   resetAuto()
   let out = parsed.clean.trim() ? parsed.clean : text   // never return an empty reply
   if (notes.length) {

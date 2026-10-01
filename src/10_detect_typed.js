@@ -65,10 +65,11 @@ const MEALS = { breakfast: 450, brunch: 600, lunch: 600, dinner: 700, supper: 70
 const QTY = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, few: 3, several: 3, both: 2 }
 const STRONG_EAT = ['eat', 'eats', 'ate', 'eating', 'eaten', 'devour', 'devours', 'gulp', 'swallow', 'chew', 'munch', 'nibble', 'bite', 'drink', 'drinks', 'drank', 'sip', 'chug', 'consume', 'scarf', 'stuff', 'wolf', 'feast', 'dine', 'inhale', 'gorge', 'binge', 'feed', 'feeds', 'fed']
 const WEAK_EAT = ['have', 'having', 'take', 'grab', 'try', 'taste', 'sample', 'finish', 'pour', 'order', 'get', 'grab', 'help', 'mix', 'make', 'cook', 'polish', 'share', 'split', 'serve', 'offer', 'give', 'hand', 'has', 'had']
-function detectAte(text) {
-  const toks = tokensOf(text)
+function detectAte(text) { return detectAteInfo(text, false).kcal }
+function detectAteInfo(text, force) {   // force: the caller already knows this sentence starts a meal, so no eating verb is needed
+  const toks = tokensOf(text), foods = [], labels = [], parts = []
   const strong = findTok(toks, STRONG_EAT) >= 0, weak = findTok(toks, WEAK_EAT) >= 0
-  if (!strong && !weak) return 0
+  if (!strong && !weak && !force) return { kcal: 0, foods: foods, label: '', parts: parts }
   let total = 0, found = false
   const qtyBefore = (i) => {   // nearest quantity word in the few words before the food
     for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
@@ -82,6 +83,8 @@ function detectAte(text) {
     const i = findTok(toks, f[0])
     if (i < 0) return
     found = true
+    foods.push(f[0][0])
+    labels.push(toks[i])
     const q = qtyBefore(i)
     let kcal = f[1]
     if (q) {
@@ -91,12 +94,13 @@ function detectAte(text) {
       else kcal = f[2] ? f[2] : f[1] * 4   // whole / entire / all
     }
     total += kcal
+    parts.push({ food: f[0][0], kcal: kcal, label: toks[i] })
   })
   Object.keys(MEALS).forEach((w) => {
-    if (findTok(toks, [w]) >= 0 && !found) { found = true; total += MEALS[w] }
+    if (findTok(toks, [w]) >= 0 && !found) { found = true; total += MEALS[w]; foods.push(w); labels.push(w); parts.push({ food: w, kcal: MEALS[w], label: w }) }
   })
-  if (!found) return strong ? 400 : 0   // "I eat" with no food named counts as a plain meal; "I have" alone does not
-  return Math.round(Math.min(total, 5000))
+  if (!found) return { kcal: strong ? 400 : 0, foods: [], label: 'a meal', parts: parts }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  return { kcal: Math.round(Math.min(total, 5000)), foods: foods, label: labels.map((l) => (/s$/.test(l) ? l : 'a ' + l)).join(' and '), parts: parts }
 }
 
 const EX_LEGS = ['squat', 'squats', 'lunge', 'lunges', 'calf', 'legpress']
@@ -152,7 +156,7 @@ function autoDetectAll(text) {
   keys.forEach((k) => {
     const s = sheetOf(k)
     if (!s) return
-    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true }
+    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true; s.lastAuto = { kcal: Math.min(kcal, 5000), label: 'what you typed' } }
     if (ex) {
       ev.push({ type: 'burn', n: ex.burn, who: k }); s.auto.burn = true
       ex.regions.forEach((r) => { ev.push({ type: 'train', r: r, n: ex.effort, who: k }); s.auto.train = true })

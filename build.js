@@ -7,7 +7,7 @@ const dir = __dirname
 
 const ORDER = [
   'src/01_config.js', 'src/02_constants.js', 'src/03_helpers.js', 'src/04_state.js', 'src/05_characters_undo.js',
-  'src/06_body_model.js', 'src/07_energy_growth.js', 'src/08_set_values.js', 'src/09_ai_tags.js', 'src/10_detect_typed.js',
+  'src/06_body_model.js', 'src/07_energy_growth.js', 'src/08_set_values.js', 'src/09_ai_tags.js', 'src/10_detect_typed.js', 'src/10b_detect_narrated.js',
   'src/11_commands.js', 'src/12_ai_text_status.js', 'src/13_look_words.js', 'src/14_inspect.js', 'src/15_story_card.js'
 ]
 const BUILDS = [   // output file, preset inserted right after the config (or null)

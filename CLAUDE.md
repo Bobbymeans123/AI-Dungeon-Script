@@ -11,7 +11,7 @@ A personal, private AI Dungeon scenario tool. It tracks body changes for one or 
 | `src/*.js` | | Library source modules, one shared scope (no import/export). Edit these. |
 | `presets/whitney.js` | | Whitney `CHARACTERS` and `HIDE_PLAYER`, inserted right after `src/01_config.js` in the Whitney build. |
 | `build.js` | | `node build.js` concatenates `src/` in a fixed order into both libraries and fails on a duplicate top-level name. |
-| `bt_test.js` | | `node bt_test.js` runs the harness against the built `bt_library_whitney.js` (`BT_LIB=bt_library.js` for the generic one). Rebuild first. |
+| `bt_test.js` | | `node bt_test.js` runs the harness against the built `bt_library_whitney.js` (`BT_LIB=bt_library.js` for the generic one). Rebuild first. Fixtures are in `tests/fixtures/` (burger and ice cream scenes are RECONSTRUCTED, replace with the real replies). |
 | `bt_input.js` | Input tab | Undo snapshot, commands, auto-detect, refreshes the Author's Note. |
 | `bt_output.js` | Output tab | Retry snapshot, reads AI tags, writes cards, status line. |
 | Context tab | | Left as the default. Not used. |
@@ -20,7 +20,7 @@ A personal, private AI Dungeon scenario tool. It tracks body changes for one or 
 
 Each script tab ends with `modifier(text)`. The Input and Output hooks return `{ text }`. All shared code lives in the Library.
 
-**Build order** (load order matters, top-level constants are read while loading): 01_config, [preset], 02_constants, 03_helpers, 04_state, 05_characters_undo, 06_body_model, 07_energy_growth, 08_set_values, 09_ai_tags, 10_detect_typed, 11_commands, 12_ai_text_status, 13_look_words, 14_inspect, 15_story_card. After editing `src/`, run `node build.js` then `node bt_test.js`, and paste the built file into the Library tab.
+**Build order** (load order matters, top-level constants are read while loading): 01_config, [preset], 02_constants, 03_helpers, 04_state, 05_characters_undo, 06_body_model, 07_energy_growth, 08_set_values, 09_ai_tags, 10_detect_typed, 10b_detect_narrated, 11_commands, 12_ai_text_status, 13_look_words, 14_inspect, 15_story_card. After editing `src/`, run `node build.js` then `node bt_test.js`, and paste the built file into the Library tab.
 
 ## Environment facts (from AI Dungeon's scripting guide and real play)
 
@@ -93,10 +93,12 @@ Input and Output run every turn, the Author's Note and story card are written, `
 
 In progress (decided with the user, do in order, test with `node files/bt_test.js` after each, show results before moving on):
 - [x] 1. Shared "already counted this turn" guard (`s.auto[type]` plus dedupe in `applyEvents`).
-- [ ] 2. Run the eating/exercise detector on the AI reply in bt_output.js using that guard; status line says what was counted ("Counted: Whitney ate a double burger (~1,050 kcal). Type :undo meal to remove."); add `:undo meal`.
+- [x] 2. (done, see below) Run the eating/exercise detector on the AI reply in bt_output.js using that guard; status line says what was counted ("Counted: Whitney ate a double burger (~1,050 kcal). Type :undo meal to remove."); add `:undo meal`.
 - [ ] 3. Lazy mode (config switch): meal 700, snack 300, sweet 400; massive/huge/mountain of x1.5, small/little/just a taste x0.5.
 - [ ] 4. Silly preset: lazy mode + PACE about 6, adjustable with :pace.
 - Later, not started: name every character in the status line, Rue's real starting stats, negatives ("skips dessert", "just a taste"), time-skip day advance, `:quiet on|off`.
+
+Step 2 notes: `src/10b_detect_narrated.js` runs on the AI reply in `bt_output.js` after the tags. It counts only meal starts (arrives, orders, grabs, digs into, eats a ...), ignores continuation and wanting/looking wording, and attributes by name only ("you" needs `CFG.YOU_NAME` with a sheet, or a visible player sheet; she/they counts nothing). All sentences about one meal in a reply are merged and counted once. Cooldown: same character + food word is skipped for 3 actions (`s.cool`, inside the snapshot so retry/undo work). Status line: `Counted: Whitney ate a burger and fries (~950 kcal). Type :undo meal to remove.` `:undo meal` removes `s.lastAuto` once. Exercise narration is NOT detected yet. Size words come in step 3.
 
 Other:
 1. `:sheet add` options: `muscle=`, `activity=`, and a mana multiplier, so athletes and mana-rich characters can start realistic. (Rue, a runner, was the motivating case.)
