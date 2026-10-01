@@ -1,1 +1,1 @@
-These fixtures are RECONSTRUCTED from descriptions of the real replies. Replace the text in each .txt with the real reply (keep the file names).
+burger_scene.txt and ice_cream_scene.txt are REAL replies from play. The burger_1/2/3 files are that same burger reply split in three at paragraph breaks (order and arrival, bites, devouring) to test the cooldown.

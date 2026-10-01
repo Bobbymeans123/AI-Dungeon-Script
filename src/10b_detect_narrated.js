@@ -8,6 +8,8 @@ const NARRATE_COOLDOWN = 3
 const START_RE = /\b(?:arrives?|arrived|orders?|ordered|ordering|grabs?|grabbed|digs? into|dug into|tucks? into|starts? (?:on|eating)|begins? (?:to eat|eating)|brings?|serves?|served|sets? down|slides? (?:over|across)|eats?|ate|helps? (?:herself|himself|themselves) to|picks? up)\b/i
 const CONT_RE = /\b(?:another (?:bite|nibble|sip|taste|piece|forkful|spoonful)|takes? (?:a|one|the) (?:bite|nibble|sip|taste)|bites? into|chews?|chewing|savou?rs?|savou?ring|finish(?:es|ed)?|the rest|last (?:bite|piece|crumb)|licks?|swallows?|polish(?:es|ed)? off|wipes?|leftovers?|looks? (?:at|down)|stares?|eyes|smells?|watch(?:es|ed)|admires?|considers?|wants?|wonders?)\b/i
 
+const DISHES = ['burger', 'sandwich', 'pizza', 'salad', 'pasta', 'cake']   // when one of these is in the sentence, its ingredients are not separate foods
+const INGREDIENTS = ['meat', 'cheese', 'bacon', 'ham', 'egg', 'eggs', 'butter', 'bread', 'chicken', 'pork', 'lamb', 'turkey']
 function narratedEaters(sent) {   // keys of the characters this sentence is about; [] means do not guess
   const names = namesIn(sent)
   if (names.length > 1) return /\b(?:both|together|and|share|shares)\b/i.test(sent) ? names : []
@@ -21,12 +23,13 @@ function narratedEaters(sent) {   // keys of the characters this sentence is abo
 }
 function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
   const found = {}
-  const sentences = text.replace(/\[[^\]]*\]/g, ' ').replace(/\.{2,}|…/g, ' ').split(/(?<=[.!?])\s+|[;\n]+/)
+  const sentences = text.replace(/\[[^\]]*\]/g, ' ').replace(/\.{2,}|…/g, ' ').split(/(?<=[.!?])\s+|[;\n]+|\s*[—–,]\s*and\s+(?=[A-Z])/)   // also "..., and Whitney nudges ...": a new clause with its own subject
   sentences.forEach((sent) => {
     const at = sent.search(CONT_RE)
     const head = at >= 0 ? sent.slice(0, at) : sent   // what happens before "takes another bite" still counts
     if (!START_RE.test(head)) return
-    const parts = detectAteInfo(head, true).parts.filter((p) => p.kcal > 0)   // water, tea and typo matches like "waiter" do not count
+    let parts = detectAteInfo(head, true).parts.filter((p) => p.kcal > 0)   // water, tea and typo matches like "waiter" do not count
+    if (parts.some((p) => DISHES.indexOf(p.food) >= 0)) parts = parts.filter((p) => INGREDIENTS.indexOf(p.label) < 0)   // "burger ... slabs of meat" is one dish
     if (!parts.length) return
     narratedEaters(sent).forEach((k) => {
       found[k] = found[k] || {}
