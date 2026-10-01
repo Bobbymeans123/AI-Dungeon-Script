@@ -34,6 +34,14 @@ function upgradeBT(s) {   // lets an adventure started with an older version kee
   if (s.glandMax === undefined) s.glandMax = s.start.potential
   if (s.gland0 === undefined) s.gland0 = s.start.gland
 }
+function newPlayer() {   // your own sheet: the defaults, or CFG.PLAYER (a named character with their own starting body)
+  const P = CFG.PLAYER
+  if (!P) return newBT()
+  const s = newBT(P.start, { name: P.name, pattern: P.pattern, look: P.look })
+  Object.keys(P.bonus || {}).forEach((b) => { s.bonus[b] = P.bonus[b] })
+  Object.keys(P.set || {}).forEach((k) => { applyOp(s, k, '=', P.set[k]) })   // same as :set dex 13
+  return s
+}
 const initBT = () => {
   if (!state.bt) state.bt = newBT(); else upgradeBT(state.bt)
   if (!state.npcs) state.npcs = {}
@@ -46,6 +54,7 @@ const initBT = () => {
       state.npcs[k] = newBT(c.start, { name: c.name, pattern: c.pattern, look: c.look })
       Object.keys(c.bonus || {}).forEach((b) => { state.npcs[k].bonus[b] = c.bonus[b] })
     })
+    if (CFG.PLAYER) state.bt = newPlayer()
     if (CFG.HIDE_PLAYER) state.bt_hideYou = true
   }
 }

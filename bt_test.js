@@ -6,7 +6,7 @@ const hooks = { in: rd('bt_input.js'), out: rd('bt_output.js') }
 const patch = process.env.BT_CFG ? ';' + process.env.BT_CFG : ''   // e.g. "CFG.LAZY=true", appended after the Library
 
 function run(kind, text, env) {
-  const src = lib + patch + (/LAZY/.test(env.cfg) ? '' : ';CFG.LAZY = false') + (env.cfg ? ';' + env.cfg : '') + '\n' + hooks[kind].replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
+  const src = lib + patch + (/PRESET/.test(env.cfg) ? '' : ';CFG.HIDE_PLAYER = true;CFG.PLAYER = null;CFG.YOU_NAME = "";CFG.SILLY = false;CFG.LAZY = false') + (env.cfg ? ';' + env.cfg : '') + '\n' + hooks[kind].replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
   const cards = env.cards, add = (k, e, t) => cards.push({ keys: k, entry: e, type: t })
   const upd = (i, k, e, t) => { cards[i] = { keys: k, entry: e, type: t } }
   const rem = (i) => cards.splice(i, 1)
@@ -141,7 +141,7 @@ if (require.main === module) {
   eq('lazy: burger and a sundae = meal + sweet', typed('Whitney eats a burger and a sundae.'), 1100)
   eq('lazy: :eat 600 stays exact', typed(':eat 600 Whitney'), 600)
   eq('lazy OFF: massive double burger = step 2 number (550)', typed('Whitney eats a massive double burger.', 'CFG.LAZY = false'), 550)
-  eq('Whitney preset has LAZY on by default', typed('Whitney eats a burger.', '/*LAZY*/'), 700)
+  eq('Whitney preset: lazy mode is on (via SILLY)', typed('Whitney eats a burger.', '/*PRESET*/'), 700)
   e = fresh(LZ); const rl = turn(e, 'You look around.', fx('burger_scene'))
   eq('lazy: burger_scene = 1,050 once, status shows amount', kcal(e) + ' ' + /Whitney ate a double burger and fries \(~1,050 kcal\)\. Type :undo meal/.test(note(rl)), '1050 true')
   e = fresh(LZ + ";CFG.YOU_NAME = 'Rue'"); turn(e, ':sheet add Rue weight=54', 'ok'); turn(e, 'You look around.', fx('burger_scene'))
@@ -189,12 +189,14 @@ if (require.main === module) {
   eq('narrated: Whitney drinks a glass of lemonade = 200', narr('Whitney drinks a glass of lemonade.').kcal, 200)
   eq('LAZY off: can of soda = 150, plain soda still 140', typed('Whitney drinks a can of soda.', 'CFG.LAZY = false') + '/' + typed('Whitney drinks soda.', 'CFG.LAZY = false'), '150/140')
   // zero-kcal gag drinks: 0, never also plain soda, light status line
-  ;['a diet soda', 'a diet coke', 'a coke zero', 'a zero sugar soda', 'a sugar-free soda', 'a club soda', 'a sparkling water', 'water'].forEach((d) => {
+  ;['a diet soda', 'a diet coke', 'a coke zero', 'a zero sugar soda', 'a sugar-free soda', 'a club soda', 'a sparkling water'].forEach((d) => {
     const x = fresh(LZ); const r = turn(x, 'Whitney drinks ' + d + '.', 'Fine.')
     eq('gag typed ' + d + ' = 0 + line', kcal(x) + ' ' + /sipped .* \(0 kcal, very virtuous\)/.test(r.out), '0 true')
     const n = narr('Whitney grabs ' + d + '.')
     eq('gag narrated ' + d + ' = 0 + line', n.kcal + ' ' + /sipped .* \(0 kcal, very virtuous\)/.test(n.out), '0 true')
   })
+  { const x = fresh(LZ); const r = turn(x, 'Whitney drinks water.', 'Fine.'); const n = narr('Whitney grabs water.')
+    eq('plain water: 0 and NO status line (typed + narrated)', kcal(x) + ' ' + /sipped|virtuous|\[Whitney/.test(r.out) + ' ' + n.kcal + ' ' + /sipped|virtuous|\[Whitney/.test(n.out), '0 false 0 false') }
   eq('diet soda line text', (turn(fresh(LZ), 'Whitney drinks a diet soda.', 'Fine.').out.match(/Whitney sipped[^)]*\)/) || [''])[0], 'Whitney sipped a diet soda (0 kcal, very virtuous)')
   eq('diet soda LAZY off = 0 too', typed('Whitney drinks a diet soda.', 'CFG.LAZY = false'), 0)
   eq('diet soda with a burger: burger only', typed('Whitney eats a burger and drinks a diet soda.'), 700)
@@ -212,6 +214,45 @@ if (require.main === module) {
   e = fresh(LZ); turn(e, 'You look around.', fx('burger_scene')); const bs = kcal(e)
   e = fresh(LZ); turn(e, 'You look around.', fx('ice_cream_scene'))
   eq('fixtures still: burger_scene 1,050 and ice_cream_scene 0', bs + '/' + kcal(e), '1050/0')
+
+  // ---- step 4: silly preset (3 days at +1,000 kcal for Whitney and Rue) ----
+  const RUE = ':sheet add Rue height=168 weight=54 bodyfat=18 underbust=72 bust=87 waist=60 hips=88 arm=24 thigh=49 gland=90 potential=200 pattern=even look=athletic'
+  const stats = (x, who) => {   // weight, fat %, bra from the status line of :body
+    const line = turn(x, ':body ' + who, 'ok').out.split('\n').filter((l) => l.indexOf(who) >= 0 && /kcal/.test(l)).pop() || ''
+    const m = line.match(/([\d.]+) cm, ([\d.]+) kg, ([\d.]+)% fat \| bra (\w+)/)
+    return { kg: +m[2], fat: +m[3], bra: m[4], need: +(line.match(/\/([\d,]+) kcal/)[1].replace(/,/g, '')) }
+  }
+  const sim = (cfg, pre, flip) => {   // returns the weights after each day plus the end stats
+    const x = fresh(cfg); turn(x, RUE, 'ok'); if (pre) turn(x, pre, 'ok')
+    const kg = { Whitney: [stats(x, 'Whitney').kg], Rue: [stats(x, 'Rue').kg] }
+    for (let d = 1; d <= 3; d++) {
+      if (flip && d === 2) x.cfg = flip
+      ;['Whitney', 'Rue'].forEach((w) => turn(x, ':eat ' + (stats(x, w).need + 1000) + ' ' + w, 'ok'))
+      turn(x, ':day', 'ok')
+      ;['Whitney', 'Rue'].forEach((w) => kg[w].push(stats(x, w).kg))
+    }
+    return { kg: kg, w: stats(x, 'Whitney'), r: stats(x, 'Rue') }
+  }
+  const off = sim('CFG.SILLY = false'), on = sim('CFG.SILLY = true')
+  const desc = (o) => 'W ' + o.w.kg + 'kg ' + o.w.fat + '% ' + o.w.bra + ' | R ' + o.r.kg + 'kg ' + o.r.fat + '% ' + o.r.bra
+  eq('SILLY off: old numbers unchanged', desc(off), 'W 105.4kg 34.2% 95D | R 54.4kg 18.4% 70B')
+  eq('SILLY on: visible after 3 days', desc(on), 'W 107.3kg 35.2% 95D | R 56.3kg 21% 75B')
+  const steps = (a) => a.slice(1).map((v, i) => +(v - a[i]).toFixed(1))
+  eq('SILLY on is gradual: each day +0.5..1.0 kg', [].concat(steps(on.kg.Whitney), steps(on.kg.Rue)).every((d) => d >= 0.5 && d <= 1.0), true)
+  eq('SILLY on: Whitney per-day steps', steps(on.kg.Whitney).join(','), '0.8,0.8,0.7')
+  const p2 = sim('CFG.SILLY = true', ':pace 2 Whitney')
+  eq(':pace 2 under SILLY overrides (Whitney less, Rue unchanged)', (p2.w.kg - 105).toFixed(1) + ' < ' + (on.w.kg - 105).toFixed(1) + ' / Rue ' + p2.r.kg, '0.8 < 2.3 / Rue 56.3')
+  const fl = sim('CFG.SILLY = true', '', 'CFG.SILLY = false')
+  eq('turning SILLY off mid-way restores the old rate (day 1 silly, days 2-3 normal)', steps(fl.kg.Whitney).join(','), '0.8,0.1,0.1')
+  // the real Whitney preset: Rue is your sheet
+  e = fresh('/*PRESET*/'); const rs = turn(e, ':body', 'ok').out
+  eq('preset: Rue shows her own stats (168 cm, 54 kg, 18% fat, 70B, DEX 13), not 165/60', /168 cm, 54 kg, 18% fat \| bra 70B[^|]*\| [^|]*DEX 13/.test(rs) && !/165 cm|60 kg/.test(rs), true)
+  e = fresh('/*PRESET*/'); turn(e, 'You go to sleep for the night.', 'Morning comes.')
+  eq('sleep advances both characters together', e.state.bt.day + '/' + e.state.npcs.whitney.day, '2/2')
+  e = fresh('/*PRESET*/'); turn(e, 'You look around.', fx('burger_scene'))
+  eq('preset: burger_scene Whitney 1,050, Rue (player sheet) 700', e.state.npcs.whitney.eaten + '/' + e.state.bt.eaten, '1050/700')
+  e = fresh('/*PRESET*/'); turn(e, 'You eat a burger.', 'Fine.')
+  eq('preset: unnamed typed meal goes to Rue', e.state.bt.eaten + '/' + (e.state.npcs.whitney.eaten || 0), '700/0')
 
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)

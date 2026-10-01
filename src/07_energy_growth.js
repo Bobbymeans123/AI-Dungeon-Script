@@ -38,8 +38,9 @@ function advanceDay(s, useLogged) {
     s.fuelLog.push(Math.abs(eaten / nd - 1) <= 0.25 ? 1 : 0)
     if (s.fuelLog.length > 14) s.fuelLog.shift()
   }
-  const deltaKg = net / CFG.KCAL_PER_KG
-  const share = net >= 0 ? CFG.FAT_GAIN : CFG.FAT_LOSS
+  const scale = CFG.SILLY ? paceOf(s) : 1   // SILLY: body change (fat and lean, gain and loss) is scaled by the pace, so a few days show. :pace n changes it
+  const deltaKg = net / CFG.KCAL_PER_KG * scale
+  const share = net >= 0 ? fatGain() : CFG.FAT_LOSS
   const fatD = deltaKg * share
   const w = distWeights(s, fatD >= 0)
   REGIONS.forEach((r) => { s.fat[r] = Math.max(0.3, s.fat[r] + fatD * w[r]) })
@@ -53,7 +54,7 @@ function advanceDay(s, useLogged) {
     const t = useLogged ? s.train[r] : 0
     if (t > 0) {
       const room = Math.max(0, 1 - (s.mus[r] / s.mus0[r] - 1) / 0.6)
-      const g = s.mus[r] * 0.0011 * t * fuel * room * s.pace
+      const g = s.mus[r] * 0.0011 * t * fuel * room * paceOf(s)
       s.mus[r] += g
       if (g > 0) grew.push(RWORD[r])
     } else if (net < -500) {
@@ -82,7 +83,7 @@ function advanceDay(s, useLogged) {
   if (L.stored > capT) { leaked = L.stored - capT; L.stored = capT; L.sup *= 0.92 }
   // glandular tissue adapts: grows under sustained high demand, shrinks back after a week of low demand
   const ratio = rateMax > 0 ? L.demand / rateMax : 0
-  if (lactActive(s) && ratio > 0.9 && s.gland < glandCeil(s)) s.gland = Math.min(glandCeil(s), s.gland * (1 + 0.004 * s.pace))
+  if (lactActive(s) && ratio > 0.9 && s.gland < glandCeil(s)) s.gland = Math.min(glandCeil(s), s.gland * (1 + 0.004 * paceOf(s)))
   L.lowDays = ((lactActive(s) && ratio >= 0.3) || s.curses.forced) ? 0 : L.lowDays + 1
   if (L.lowDays >= 7 && s.gland > s.gland0) s.gland = Math.max(s.gland0, s.gland * 0.993)
   L.drained = 0

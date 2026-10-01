@@ -1,4 +1,8 @@
 // ---------- small helpers ----------
+// effective settings (SILLY bundles lazy meals, a faster pace and more forgiving fat gain)
+const lazyOn = () => !!(CFG.LAZY || CFG.SILLY)
+const paceOf = (s) => (s.paceSet ? s.pace : (CFG.SILLY ? CFG.SILLY_PACE : CFG.PACE))   // :pace n sets s.pace and s.paceSet
+const fatGain = () => (CFG.SILLY ? CFG.SILLY_FAT_GAIN : CFG.FAT_GAIN)
 const r1 = (v) => Math.round(v * 10) / 10
 const r2 = (v) => Math.round(v * 100) / 100
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v))

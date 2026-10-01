@@ -20,6 +20,10 @@ const CFG = {
   NPC_MAX: 2,            // other tracked characters go into the AI's note only while their name is in the recent story, at most this many
   HIDE_PLAYER: false,   // true = you are not tracked, only the characters below (unnamed commands and tags then go to the first one)
   CHARACTERS: [],       // characters that exist from the first turn: { name, start: { weight: 70, ... }, pattern, look, bonus: { cha: 2 } } (see presets/)
+  SILLY: false,          // game-pace preset: PACE 6 (SILLY_PACE), FAT_GAIN 0.9 (SILLY_FAT_GAIN), lazy meals, and fat gain/loss is scaled by the pace so a few days show. :pace n still overrides the pace. Off = everything back to the normal values
+  SILLY_PACE: 6,
+  SILLY_FAT_GAIN: 0.9,   // share of a surplus that becomes fat under SILLY (more forgiving: less of it is lean)
+  PLAYER: null,          // seeds YOUR sheet once, on the first turn: { name, start: { ... }, pattern, look, bonus: {}, set: { dex: 13 } }. HIDE_PLAYER must be false to see it
   LAZY: false,           // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
   YOU_NAME: '',          // who "you" means in the AI's narration when your own sheet is hidden, e.g. 'Rue'. Empty = "you" is not attributed
   AUTO: true,           // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
@@ -66,6 +70,10 @@ const PARTS = { chest: 'chest', bust: 'chest', breast: 'chest', breasts: 'chest'
 const PART_RE = '(chest|bust|breasts?|arms?|core|waist|stomach|belly|abs|glutes?|hips?|legs?|thighs?|body|all)'
 
 // ---------- small helpers ----------
+// effective settings (SILLY bundles lazy meals, a faster pace and more forgiving fat gain)
+const lazyOn = () => !!(CFG.LAZY || CFG.SILLY)
+const paceOf = (s) => (s.paceSet ? s.pace : (CFG.SILLY ? CFG.SILLY_PACE : CFG.PACE))   // :pace n sets s.pace and s.paceSet
+const fatGain = () => (CFG.SILLY ? CFG.SILLY_FAT_GAIN : CFG.FAT_GAIN)
 const r1 = (v) => Math.round(v * 10) / 10
 const r2 = (v) => Math.round(v * 100) / 100
 const clampN = (v, a, b) => Math.min(b, Math.max(a, v))
@@ -111,6 +119,14 @@ function upgradeBT(s) {   // lets an adventure started with an older version kee
   if (s.glandMax === undefined) s.glandMax = s.start.potential
   if (s.gland0 === undefined) s.gland0 = s.start.gland
 }
+function newPlayer() {   // your own sheet: the defaults, or CFG.PLAYER (a named character with their own starting body)
+  const P = CFG.PLAYER
+  if (!P) return newBT()
+  const s = newBT(P.start, { name: P.name, pattern: P.pattern, look: P.look })
+  Object.keys(P.bonus || {}).forEach((b) => { s.bonus[b] = P.bonus[b] })
+  Object.keys(P.set || {}).forEach((k) => { applyOp(s, k, '=', P.set[k]) })   // same as :set dex 13
+  return s
+}
 const initBT = () => {
   if (!state.bt) state.bt = newBT(); else upgradeBT(state.bt)
   if (!state.npcs) state.npcs = {}
@@ -123,6 +139,7 @@ const initBT = () => {
       state.npcs[k] = newBT(c.start, { name: c.name, pattern: c.pattern, look: c.look })
       Object.keys(c.bonus || {}).forEach((b) => { state.npcs[k].bonus[b] = c.bonus[b] })
     })
+    if (CFG.PLAYER) state.bt = newPlayer()
     if (CFG.HIDE_PLAYER) state.bt_hideYou = true
   }
 }
@@ -349,8 +366,9 @@ function advanceDay(s, useLogged) {
     s.fuelLog.push(Math.abs(eaten / nd - 1) <= 0.25 ? 1 : 0)
     if (s.fuelLog.length > 14) s.fuelLog.shift()
   }
-  const deltaKg = net / CFG.KCAL_PER_KG
-  const share = net >= 0 ? CFG.FAT_GAIN : CFG.FAT_LOSS
+  const scale = CFG.SILLY ? paceOf(s) : 1   // SILLY: body change (fat and lean, gain and loss) is scaled by the pace, so a few days show. :pace n changes it
+  const deltaKg = net / CFG.KCAL_PER_KG * scale
+  const share = net >= 0 ? fatGain() : CFG.FAT_LOSS
   const fatD = deltaKg * share
   const w = distWeights(s, fatD >= 0)
   REGIONS.forEach((r) => { s.fat[r] = Math.max(0.3, s.fat[r] + fatD * w[r]) })
@@ -364,7 +382,7 @@ function advanceDay(s, useLogged) {
     const t = useLogged ? s.train[r] : 0
     if (t > 0) {
       const room = Math.max(0, 1 - (s.mus[r] / s.mus0[r] - 1) / 0.6)
-      const g = s.mus[r] * 0.0011 * t * fuel * room * s.pace
+      const g = s.mus[r] * 0.0011 * t * fuel * room * paceOf(s)
       s.mus[r] += g
       if (g > 0) grew.push(RWORD[r])
     } else if (net < -500) {
@@ -393,7 +411,7 @@ function advanceDay(s, useLogged) {
   if (L.stored > capT) { leaked = L.stored - capT; L.stored = capT; L.sup *= 0.92 }
   // glandular tissue adapts: grows under sustained high demand, shrinks back after a week of low demand
   const ratio = rateMax > 0 ? L.demand / rateMax : 0
-  if (lactActive(s) && ratio > 0.9 && s.gland < glandCeil(s)) s.gland = Math.min(glandCeil(s), s.gland * (1 + 0.004 * s.pace))
+  if (lactActive(s) && ratio > 0.9 && s.gland < glandCeil(s)) s.gland = Math.min(glandCeil(s), s.gland * (1 + 0.004 * paceOf(s)))
   L.lowDays = ((lactActive(s) && ratio >= 0.3) || s.curses.forced) ? 0 : L.lowDays + 1
   if (L.lowDays >= 7 && s.gland > s.gland0) s.gland = Math.max(s.gland0, s.gland * 0.993)
   L.drained = 0
@@ -667,7 +685,7 @@ function sizeNear(toks, i) {   // the largest size word in the 4 words before th
   return best
 }
 function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mode: the sum of the food table
-  if (!CFG.LAZY) return parts.reduce((t, p) => t + p.kcal, 0)
+  if (!lazyOn()) return parts.reduce((t, p) => t + p.kcal, 0)
   const by = { meal: [], snack: [], sweet: [] }
   let total = 0
   parts.forEach((p) => {
@@ -692,7 +710,7 @@ const sipLine = (k, labels) => (k ? state.npcs[k].name : 'You') + ' sipped ' + l
 const withArticle = (l) => (/s$|water$|^fudge$|^bbq$/.test(l) ? l : 'a ' + l)
 // ---- drinks: the container sets the amount (real kcal, also in lazy mode) ----
 const DRINK_ROWS = ['milk', 'soda', 'sweettea']   // FOODS rows (first word) that use containers
-const GAG = ['dietsoda', 'clubsoda', 'sparklingwater', 'water']   // zero-kcal drinks that get a light status line when named exactly
+const GAG = ['dietsoda', 'clubsoda', 'sparklingwater']   // zero-kcal drinks that get a light status line when named exactly (plain water counts 0 and says nothing)
 const SIZE_DRINK = { oneliter: 420, twoliter: 840, biggulp: 800 }   // a named size can sit a few words away ("a 2-liter bottle of soda")
 const CONTAINER = { can: 150, cans: 150, glass: 200, glasses: 200, cup: 200, cups: 200, bottle: 210, bottles: 210, jug: 420, jugs: 420 }   // must sit right next to the drink ("a can of soda")
 function containerNear(toks, i) {   // kcal for the container around the drink word at i, or 0
@@ -736,7 +754,7 @@ function detectAteInfo(text, force) {   // force: the caller already knows this 
   Object.keys(MEALS).forEach((w) => {
     if (findTok(toks, [w]) >= 0 && !found) { found = true; foods.push(w); labels.push(w); parts.push({ food: w, word: w, kcal: MEALS[w], label: w, cls: LAZY_CLASS[w], size: null, qty: 1 }) }
   })
-  if (!found) return { kcal: strong ? (CFG.LAZY ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts, gag: [] }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  if (!found) return { kcal: strong ? (lazyOn() ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts, gag: [] }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
   if (/\b(?:just a|a little|a tiny|a small) (?:taste|nibble|bite|sip)\b/.test(normText(text))) parts.forEach((p) => { p.size = 0.5 })   // "just a taste"
   return { kcal: Math.round(Math.min(mealKcal(parts), 5000)), foods: foods, label: labels.map(withArticle).join(' and '), parts: parts, gag: parts.filter((p) => p.gag).map((p) => p.label) }
 }
@@ -832,6 +850,7 @@ function narratedEaters(sent) {   // keys of the characters this sentence is abo
   const names = namesIn(sent)
   if (names.length > 1) return /\b(?:both|together|and|share|shares)\b/i.test(sent) ? names : []
   if (names.length === 1) return names
+  if (CFG.YOU_NAME && !state.bt_hideYou && !state.npcs[CFG.YOU_NAME.toLowerCase()] && new RegExp('\\b' + esc(CFG.YOU_NAME) + "(?:'s)?\\b", 'i').test(sent)) return ['']   // the player sheet is named (Rue)
   if (/\byou(?:r|rs)?\b/i.test(sent)) {
     const you = CFG.YOU_NAME && state.npcs[CFG.YOU_NAME.toLowerCase()] ? CFG.YOU_NAME.toLowerCase() : ''
     if (you) return [you]
@@ -1013,8 +1032,8 @@ function runCommand(cmd) {
     }
     case 'support': s.support = m[1].toLowerCase() === 'on'; note = 'Support ' + (s.support ? 'on' : 'off'); break
     case 'look': s.look = m[1].toLowerCase(); note = 'Look: ' + s.look; break
-    case 'pace': s.pace = clampN(parseFloat(m[1]), 0.5, 10); note = 'Growth pace ' + s.pace; break
-    case 'reset': state.bt = newBT(); note = 'Tracker reset'; break
+    case 'pace': s.pace = clampN(parseFloat(m[1]), 0.5, 10); s.paceSet = true; note = 'Growth pace ' + s.pace; break
+    case 'reset': state.bt = newPlayer(); note = 'Tracker reset'; break
     case 'sheetadd': {
       const name = m[1], k = name.toLowerCase()
       const st = {}, o = {}

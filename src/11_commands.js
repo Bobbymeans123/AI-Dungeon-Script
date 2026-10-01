@@ -110,8 +110,8 @@ function runCommand(cmd) {
     }
     case 'support': s.support = m[1].toLowerCase() === 'on'; note = 'Support ' + (s.support ? 'on' : 'off'); break
     case 'look': s.look = m[1].toLowerCase(); note = 'Look: ' + s.look; break
-    case 'pace': s.pace = clampN(parseFloat(m[1]), 0.5, 10); note = 'Growth pace ' + s.pace; break
-    case 'reset': state.bt = newBT(); note = 'Tracker reset'; break
+    case 'pace': s.pace = clampN(parseFloat(m[1]), 0.5, 10); s.paceSet = true; note = 'Growth pace ' + s.pace; break
+    case 'reset': state.bt = newPlayer(); note = 'Tracker reset'; break
     case 'sheetadd': {
       const name = m[1], k = name.toLowerCase()
       const st = {}, o = {}

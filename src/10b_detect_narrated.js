@@ -14,6 +14,7 @@ function narratedEaters(sent) {   // keys of the characters this sentence is abo
   const names = namesIn(sent)
   if (names.length > 1) return /\b(?:both|together|and|share|shares)\b/i.test(sent) ? names : []
   if (names.length === 1) return names
+  if (CFG.YOU_NAME && !state.bt_hideYou && !state.npcs[CFG.YOU_NAME.toLowerCase()] && new RegExp('\\b' + esc(CFG.YOU_NAME) + "(?:'s)?\\b", 'i').test(sent)) return ['']   // the player sheet is named (Rue)
   if (/\byou(?:r|rs)?\b/i.test(sent)) {
     const you = CFG.YOU_NAME && state.npcs[CFG.YOU_NAME.toLowerCase()] ? CFG.YOU_NAME.toLowerCase() : ''
     if (you) return [you]

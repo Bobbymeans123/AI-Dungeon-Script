@@ -102,7 +102,7 @@ function sizeNear(toks, i) {   // the largest size word in the 4 words before th
   return best
 }
 function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mode: the sum of the food table
-  if (!CFG.LAZY) return parts.reduce((t, p) => t + p.kcal, 0)
+  if (!lazyOn()) return parts.reduce((t, p) => t + p.kcal, 0)
   const by = { meal: [], snack: [], sweet: [] }
   let total = 0
   parts.forEach((p) => {
@@ -127,7 +127,7 @@ const sipLine = (k, labels) => (k ? state.npcs[k].name : 'You') + ' sipped ' + l
 const withArticle = (l) => (/s$|water$|^fudge$|^bbq$/.test(l) ? l : 'a ' + l)
 // ---- drinks: the container sets the amount (real kcal, also in lazy mode) ----
 const DRINK_ROWS = ['milk', 'soda', 'sweettea']   // FOODS rows (first word) that use containers
-const GAG = ['dietsoda', 'clubsoda', 'sparklingwater', 'water']   // zero-kcal drinks that get a light status line when named exactly
+const GAG = ['dietsoda', 'clubsoda', 'sparklingwater']   // zero-kcal drinks that get a light status line when named exactly (plain water counts 0 and says nothing)
 const SIZE_DRINK = { oneliter: 420, twoliter: 840, biggulp: 800 }   // a named size can sit a few words away ("a 2-liter bottle of soda")
 const CONTAINER = { can: 150, cans: 150, glass: 200, glasses: 200, cup: 200, cups: 200, bottle: 210, bottles: 210, jug: 420, jugs: 420 }   // must sit right next to the drink ("a can of soda")
 function containerNear(toks, i) {   // kcal for the container around the drink word at i, or 0
@@ -171,7 +171,7 @@ function detectAteInfo(text, force) {   // force: the caller already knows this 
   Object.keys(MEALS).forEach((w) => {
     if (findTok(toks, [w]) >= 0 && !found) { found = true; foods.push(w); labels.push(w); parts.push({ food: w, word: w, kcal: MEALS[w], label: w, cls: LAZY_CLASS[w], size: null, qty: 1 }) }
   })
-  if (!found) return { kcal: strong ? (CFG.LAZY ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts, gag: [] }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  if (!found) return { kcal: strong ? (lazyOn() ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts, gag: [] }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
   if (/\b(?:just a|a little|a tiny|a small) (?:taste|nibble|bite|sip)\b/.test(normText(text))) parts.forEach((p) => { p.size = 0.5 })   // "just a taste"
   return { kcal: Math.round(Math.min(mealKcal(parts), 5000)), foods: foods, label: labels.map(withArticle).join(' and '), parts: parts, gag: parts.filter((p) => p.gag).map((p) => p.label) }
 }
