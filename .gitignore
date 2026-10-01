@@ -1,2 +1,6 @@
 # exported adventures contain account ids: never commit them
 exports/
+# loose adventure exports (they contain account ids)
+/actions-001.json
+/metadata.json
+/scenario-c5-*.json

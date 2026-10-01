@@ -558,6 +558,91 @@ if (require.main === module) {
   e = mkName([[CN, 'Zed'], [YN, 'Kay']], 'Mo', '')
   eq('Rue build ignores all of it (still Rue, no seeded mark)', nameOf1(e) + ' ' + e.state.bt.seeded, 'Rue undefined')
 
+  // ---- COMMANDS.md: every documented example is run, and the doc must match the parser both ways ----
+  const DOC = fs.readFileSync(__dirname + '/COMMANDS.md', 'utf8')
+  const README = fs.existsSync(__dirname + '/README.md') ? fs.readFileSync(__dirname + '/README.md', 'utf8') : ''
+  eq('README.md exists and links COMMANDS.md and PASTE.md', /\(COMMANDS\.md\)/.test(README) && /\(PASTE\.md\)/.test(README), true)
+  // [setup turns [[typed, AI reply]], what to type, regexes the reply must match, text COMMANDS.md must contain, which build ('' = Rue build)]
+  const EX = [
+    [[], ':eat 600', [/Ate 600 kcal/]],
+    [[['Whitney eats a burger.']], ':undo meal Whitney', [/Removed Whitney: a burger \(700 kcal\)/]],
+    [[], ':undo meal', [/No auto-counted meal to remove/]],
+    [[], ':burn 300', [/Burned 300 extra kcal/]],
+    [[], ':train legs 2', [/Trained legs \(effort 2\)/]],
+    [[], ':set weight 70', [/Weight 60 to 70 kg/]],
+    [[], ':gland +20', [/Glandular tissue 90 to 110 cc each/]],
+    [[], ':potential +50', [/Glandular potential 150 to 200 cc each/]],
+    [[], ':lactate on', [/Lactation on/]],
+    [[], ':milk 300', [/Drained 0 ml/]],
+    [[], ':mana +30 arms', [/Mana \+\d+ arms/]],
+    [[], ':curse add hunger', [/Cursed: hunger/]],
+    [[], ':support off', [/Support off/]],
+    [[], ':look athletic', [/Look: athletic/]],
+    [[], ':pace 2', [/Growth pace 2/]],
+    [[], ':sheet add Rue height=168 weight=54 bodyfat=18 pattern=even look=athletic', [/Added a sheet for Rue \(height 168, weight 54, bodyfat 18\)/]],
+    [[], ':sheet add Bo muscle=1.2 activity=1.5', [/Added a sheet for Bo/]],
+    [[[':sheet add Rue weight=54']], ':sheet remove Rue', [/Removed the sheet for Rue/]],
+    [[], ':sheet list', [/Sheets: You, Whitney/]],
+    [[], ':sheet you off', [/Your own sheet is hidden/]],
+    [[], ':day', [/Day 1: nothing logged, assumed maintenance/]],
+    [[], ':inspect chest', [/Inspecting chest/, /Chest inspection:/]],
+    [[], ':scan', [/Inspecting all/, /Full inspection:/]],
+    [[], ':body', [/^\[Day 1 \| 165 cm, 60 kg/m]],
+    [[], ':help', [/Commands: :set stat value, :eat kcal/]],
+    [[[':set weight 70']], ':reset confirm', [/Tracker reset/]],
+    [[], ':probe', [/Probe card written \(story card "probe"\)/]],
+    // detection examples: [setup, typed text, regexes, a phrase COMMANDS.md must contain]
+    [[], 'You eat a burger.', [/\+700 kcal/], 'a burger and a sundae'],
+    [[], 'You eat a massive double burger.', [/\+1,050 kcal/], 'A massive double burger is 1,050'],
+    [[], 'You eat a small scoop of ice cream.', [/\+200 kcal/], 'a small scoop of ice cream is 200'],
+    [[], 'You eat half a sundae.', [/\+200 kcal/], 'half a sundae is 200'],
+    [[], 'You eat a burger and a sundae.', [/\+1,100 kcal/], 'a meal plus a sweet (1,100)'],
+    [[], 'You eat steak and fries.', [/\+700 kcal/], 'steak and fries is one 700 meal'],
+    [[], 'You drink a can of soda.', [/\+150 kcal/], 'a can of soda'],
+    [[], 'You drink a 2-liter of soda.', [/\+840 kcal/], 'a 2-liter of soda'],
+    [[], 'Whitney drinks a diet soda.', [/Whitney sipped a diet soda \(0 kcal, very virtuous\)/], 'Whitney sipped a diet soda (0 kcal, very virtuous)'],
+    [[], 'You do squats.', [/Burned 300 kcal/, /Trained legs/], 'Burn is 150, 300 or 450 kcal'],
+    [[], 'You do hard squats.', [/Burned 450 kcal/], 'hard, heavy, intense, brutal'],
+    [[], 'You do light squats.', [/Burned 150 kcal/], 'light, easy, gentle, quick'],
+    [[], 'You go to sleep for the night.', [/Day 1: nothing logged/], 'go to bed'],
+    [[], 'You examine your chest.', [/Chest inspection:/], 'examine your chest'],
+    [[], 'Whitney eats cake.', [/Whitney: \+400 kcal/], 'Whitney eats cake'],
+    [[], 'We share fries.', [/\+150 kcal/], 'We share fries.'],
+    [[], 'You wait.', [/Counted: Whitney ate a burger \(~700 kcal\)\. Type :undo meal to remove\./], 'Counted: Whitney ate a burger (~700 kcal). Type :undo meal to remove.', 'Whitney orders a burger.'],
+    [[], 'name=Zed height=170 weight=60 bodyfat=22', [/Player setup applied: height, weight, bodyfat, name/], 'Player setup applied: height, weight, bodyfat, name', null, 'card']
+  ]
+  EX.forEach(([setup, input, res, mention, ai, mode]) => {
+    const x = C(); setup.forEach((s) => turn(x, s[0], s[1] || 'Fine.'))
+    let out
+    if (mode === 'card') { x.cards.find((c) => c.type === 'Player setup').entry = input; out = turn(x, 'You wait.', 'ok').out }
+    else out = turn(x, input, ai || 'Fine.').out
+    const ok = res.every((r) => r.test(out)), inDoc = DOC.indexOf(mention || input) >= 0
+    eq('COMMANDS.md example "' + input + (ai ? ' / AI: ' + ai : '') + '"' + (ok ? '' : '  reply was: ' + out.replace(/\n+/g, ' // ').slice(-200)) + (inDoc ? '' : '  NOT IN COMMANDS.md'), ok && inDoc, true)
+  })
+  e = fresh('/*PRESET*/', ''); turn(e, 'Rue and Whitney share cake.', 'ok')
+  eq('COMMANDS.md sharing example: "Rue and Whitney share cake" gives 200 each (Rue build)', both2(e) + ' ' + (DOC.indexOf('"Rue and Whitney share cake" gives a 400 sweet as 200 each') >= 0), '200/200 true')
+  e = mkPH({ height: '170', weight: '60', build: 'curvy', activity: 'runner' })
+  eq('COMMANDS.md placeholder example line: "Player sheet set from your answers: 170 cm, 60 kg, curvy, runner."', (e.firstOut.indexOf('Player sheet set from your answers: 170 cm, 60 kg, curvy, runner.') >= 0) + ' ' + (DOC.indexOf('Player sheet set from your answers: 170 cm, 60 kg, curvy, runner.') >= 0), 'true true')
+  e = C(); const tg = turn(e, 'You wait.', 'He eats. [ate 600] [burn 100]'); const tg2 = turn(e, 'You wait.', 'She eats. [ate 300 Whitney]')
+  eq('COMMANDS.md tags: [ate 600] counts for your sheet, [ate 300 Whitney] for Whitney, and both are silent (no status line, tags removed)', pw(e) + ' ' + /\[Day/.test(tg.out + tg2.out) + ' ' + /\[ate|\[burn/.test(tg.out + tg2.out) + ' ' + (DOC.indexOf('applied silently') >= 0), '600/300 false false true')
+  e = fresh('/*PRESET*/', ''); turn(e, 'You wait.', 'She orders a burger.')
+  eq('COMMANDS.md: "she" with no name counts nothing', pw(e), '0/0')
+  // the parser and the doc agree both ways
+  const parserSrc = new Function('state', 'info', 'history', 'storyCards', 'addStoryCard', 'updateStoryCard', 'removeStoryCard', libOf('custom') + ';return CMD_RE.map(function (e) { return e[1].source })')({}, {}, [], [], () => {}, () => {}, () => {})
+  const tokensOfSrc = (src) => {
+    let m = src.match(new RegExp('^:\\(\\?:([a-z|]+)\\)'))   // ":(?:inspect|scan)..." has two names
+    if (m) return m[1].split('|').map((w) => ':' + w)
+    m = src.match(new RegExp('^:([a-z]+)\\[ \\\\t\\]\\+([a-z]+)\\b'))   // ":sheet[ \t]+add" has a literal second word
+    if (m) return [':' + m[1] + ' ' + m[2]]
+    return [':' + src.match(new RegExp('^:([a-z]+)'))[1]]
+  }
+  const handled = [].concat.apply([], parserSrc.map(tokensOfSrc))
+  const missing = handled.filter((t) => DOC.indexOf(t) < 0)
+  eq('every command the parser handles is in COMMANDS.md (' + handled.length + ' of them: ' + handled.join(' ') + ')' + (missing.length ? '  MISSING: ' + missing.join(' ') : ''), missing.length, 0)
+  const headingCmds = [].concat.apply([], DOC.split('\n').filter((l) => /^### `:/.test(l)).map((l) => (l.match(/`(:[a-z]+)/g) || []).map((s) => s.slice(1))))
+  const invented = headingCmds.filter((c) => handled.indexOf(c) < 0 && !handled.some((t) => t.indexOf(c + ' ') === 0))
+  eq('COMMANDS.md documents no command the parser does not handle (' + headingCmds.length + ' headings)' + (invented.length ? '  INVENTED: ' + invented.join(' ') : ''), invented.length, 0)
+
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
 }
