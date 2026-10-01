@@ -25,6 +25,7 @@ const CFG = {
   SILLY_PACE: 6,
   SILLY_FAT_GAIN: 0.9,   // share of a surplus that becomes fat under SILLY (more forgiving: less of it is lean)
   PLAYER: null,          // seeds YOUR sheet once, on the first turn: { name, start: { ... }, pattern, look, bonus: {}, set: { dex: 12 } }. HIDE_PLAYER must be false to see it
+  PLACEHOLDERS: false,   // true = on the first turn, seed YOUR sheet from state.placeholders (name, height, weight, build, activity, chest). Only the custom preset turns it on
   PLAYER_CARD: false,    // true = a "Player setup" story card (name= height= weight= ...) fills in your own sheet when you edit it. Only the custom preset turns it on
   PROBE: false,         // true = the :probe command exists (writes a story card describing what the hooks receive). Only the custom preset turns it on
   LAZY: false,          // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
@@ -114,7 +115,9 @@ const newBT = (startOverride, opts) => {
     curses: { hunger: false, leech: '', forced: false, bias: '' }, glandMax: st.potential, gland0: st.gland
   }
   const fatT = st.weight * st.bodyfat / 100
-  REGIONS.forEach((r) => { s.fat[r] = fatT * P[r]; s.mus[r] = MUS_START[r] * k })
+  REGIONS.forEach((r) => { s.fat[r] = fatT * P[r]; s.mus[r] = MUS_START[r] * k * (opts.muscle || 1) })   // muscle: starting muscle multiplier (1 = the usual)
+  s.muscleMul = opts.muscle || 1
+  if (opts.activity) s.activity = opts.activity   // this sheet's own activity factor (otherwise CFG.ACTIVITY)
   s.fat0 = copy(s.fat)
   s.mus0 = copy(s.mus)
   s.other = st.weight - fatT - sum(s.mus)
@@ -158,6 +161,7 @@ const initBT = () => {
     if (CFG.PLAYER) state.bt = newPlayer()
     if (CFG.HIDE_PLAYER) state.bt_hideYou = true
   }
+  if (state.bt && state.bt.name && !CFG.YOU_NAME) CFG.YOU_NAME = state.bt.name   // YOU_NAME follows the player's name
 }
 
 // ---------- several characters: you plus anyone added with :sheet add ----------
@@ -357,7 +361,7 @@ const statLine = (a) => AB.map((k) => k.toUpperCase() + ' ' + a[k].score).join('
 // ---------- energy and growth ----------
 const leanMass = (s, m) => m.weight - sum(s.fat)
 const need = (s, m, burn) => {
-  const base = (370 + 21.6 * leanMass(s, m)) * CFG.ACTIVITY
+  const base = (370 + 21.6 * leanMass(s, m)) * (s.activity || CFG.ACTIVITY)
   return Math.round(base + (burn || 0) + milkCost(s) + (s.curses.hunger ? base * 0.25 : 0))
 }
 
@@ -1026,6 +1030,12 @@ function parseSheetOpts(str, strict) {
     if (i < 0) { if (strict) bad.push(p); return }
     const key = p.slice(0, i).toLowerCase(), val = p.slice(i + 1)
     if (val === '') return
+    if (key === 'muscle' || key === 'activity') {   // starting muscle multiplier (0.5-1.5) and activity factor (1.0-2.0)
+      const lim = key === 'muscle' ? [0.5, 1.5] : [1.0, 2.0], n = parseFloat(val)
+      if (/^\d+(?:\.\d+)?$/.test(val) && n >= lim[0] && n <= lim[1]) o[key] = n
+      else if (strict) bad.push(p)
+      return
+    }
     if (key === 'pattern') { if (PATTERNS[val]) o.pattern = val; else if (strict) bad.push(p) }
     else if (key === 'look') { if (LOOKS.indexOf(val) >= 0) o.look = val; else if (strict) bad.push(p) }
     else if (key === 'name' && strict) { if (/^[A-Za-z][\w-]*$/.test(val)) o.name = val; else bad.push(p) }
@@ -1413,14 +1423,14 @@ function playerPristine(s) {   // nothing has happened to this sheet yet
     MEAS.every((m) => !s.adj[m]) && s.gland === s.gland0 && s.glandMax === s.start.potential && !s.sag && !s.lact.on
 }
 function applyPlayerCard() {
-  state.bt_cardNote = ''
   const cards = typeof storyCards !== 'undefined' && storyCards ? storyCards : []
   let entry = null
   for (let i = 0; i < cards.length; i++) { if (cards[i].type === SETUP_TYPE && cards[i].keys === SETUP_KEYS) { entry = String(cards[i].entry || ''); break } }
   if (entry === null) {
     if (state.bt_setupMade) return   // you deleted it: it is not made again
-    addStoryCard(SETUP_KEYS, SETUP_TEMPLATE, SETUP_TYPE)
-    entry = SETUP_TEMPLATE
+    entry = (state.bt && state.bt.seedCard) || SETUP_TEMPLATE   // after seeding from the placeholders, the card shows those values
+    addStoryCard(SETUP_KEYS, entry, SETUP_TYPE)
+    if (state.bt.seedCard) state.bt.cardApplied = entry   // already applied
   }
   state.bt_setupMade = true
   const s = state.bt
@@ -1429,7 +1439,7 @@ function applyPlayerCard() {
   const did = Object.keys(r.st).concat(Object.keys(r.o))
   if (did.length) {
     if (playerPristine(s)) {   // rebuild exactly like :sheet add would
-      const n = newBT(Object.assign({}, s.start, r.st), { name: r.o.name || s.name, pattern: r.o.pattern || s.pattern, look: r.o.look || s.look })
+      const n = newBT(Object.assign({}, s.start, r.st), { name: r.o.name || s.name, pattern: r.o.pattern || s.pattern, look: r.o.look || s.look, muscle: s.muscleMul, activity: s.activity })
       n.pace = s.pace; n.paceSet = s.paceSet; n.support = s.support
       state.bt = n
     } else {   // the story has moved on: the same as typing :set for each value
@@ -1443,9 +1453,11 @@ function applyPlayerCard() {
   const notes = []
   if (did.length && entry !== SETUP_TEMPLATE) notes.push('Player setup applied: ' + (did.length > 4 ? did.length + ' values' : did.join(', ')))
   if (r.bad.length) notes.push('Player setup skipped: ' + r.bad.join(' '))
-  state.bt_cardNote = notes.join(' | ')
+  state.bt_cardNote = [state.bt_cardNote].concat(notes).filter(Boolean).join(' | ')
 }
 function readCard() {
+  state.bt_cardNote = ''
+  if (CFG.PLACEHOLDERS) seedFromPlaceholders()
   if (CFG.PLAYER_CARD) applyPlayerCard()
   if (!CFG.CARD_READBACK || !state.bt_card) return
   const cards = typeof storyCards !== 'undefined' ? storyCards : []
@@ -1480,6 +1492,8 @@ function probeCard() {
   const guess = ['character', 'player', 'name', 'characterName', 'playerName', 'you', 'class', 'hero', 'persona', 'user', 'protagonist']
   guess.forEach((k) => L.push('state.' + k + ': ' + (state[k] === undefined ? 'absent' : 'PRESENT = ' + cut(state[k], 300))))
   Object.keys(state).filter((k) => /char|player|name|class|hero|persona|user|protag/i.test(k) && guess.indexOf(k) < 0).forEach((k) => L.push('state.' + k + ' (found by name) = ' + cut(state[k], 300)))
+  L.push('', '--- state.placeholders (full) ---')
+  L.push(state.placeholders === undefined || state.placeholders === null ? 'none' : (Array.isArray(state.placeholders) ? 'array of ' + state.placeholders.length + ': ' : typeof state.placeholders + ': ') + cut(state.placeholders, 4000))
   const H = typeof history !== 'undefined' && history ? history : []
   L.push('', '--- history: ' + H.length + ' entries ---')
   const shown = []
@@ -1499,4 +1513,89 @@ function probeCard() {
   if (idx === -1) addStoryCard('probe', entry, 'Probe')
   else updateStoryCard(idx, 'probe', entry, 'Probe')
   return 'Probe card written (story card "probe")'
+}
+
+// ---------- seeding your sheet from state.placeholders (custom build) ----------
+// AI Dungeon fills state.placeholders (an array of { question, answer }) once, when the adventure starts. On the first turn the
+// answers set up YOUR sheet, once, and only while nothing has happened to it yet. A missing, empty or unreadable answer keeps the
+// default; if no placeholders exist (or none match) nothing happens. The "seeded" mark lives on the sheet, so it is part of the
+// undo/retry snapshots: a replayed first turn seeds once, and later :set changes are never overwritten.
+const PH_BUILD = { slim: [18, 'even', 'athletic'], average: [24, 'even', 'off'], curvy: [32, 'pear', 'curvy'], athletic: [16, 'even', 'athletic'] }   // body fat %, fat pattern, look
+const PH_ACTIVITY = { couch: { activity: 1.2, muscle: 0.85 }, active: {}, runner: { activity: 1.5, muscle: 1.1 } }   // activity factor, starting muscle multiplier
+const PH_CHEST = { small: [60, 150], average: [90, 200], large: [130, 300] }   // glandular cc, potential cc
+const PH_WORDS = { slim: ['skinny', 'thin'], average: ['medium', 'normal', 'avg'], curvy: ['thick'], athletic: ['fit', 'toned'], couch: ['sedentary', 'lazy'], runner: ['running'], small: ['tiny', 'flat'], large: ['big', 'huge'] }   // other words that mean the same
+
+function phAnswers() {   // the answers by field, or null when there are no placeholders
+  const ph = state.placeholders
+  if (!ph || typeof ph !== 'object') return null
+  const list = Array.isArray(ph) ? ph : Object.keys(ph).map((k) => ({ question: k, answer: ph[k] }))
+  const out = {}
+  list.forEach((p) => {
+    if (!p || p.question === undefined || p.answer === undefined || p.answer === null) return
+    const q = String(p.question).toLowerCase().replace(/\s+/g, ' ').trim(), a = String(p.answer).replace(/\s+/g, ' ').trim()
+    if (!a) return
+    const f = /^(?:character\.)?name\b/.test(q) ? 'name' : /^(?:character\.)?gender\b/.test(q) ? 'gender' : /^height/.test(q) ? 'height' : /^weight/.test(q) ? 'weight'
+      : /^build/.test(q) ? 'build' : /^activity/.test(q) ? 'activity' : /^chest/.test(q) ? 'chest' : ''
+    if (f && out[f] === undefined) out[f] = a
+  })
+  return out
+}
+function phHeight(a) {   // "170", "170cm", "1.70 m", "5'7", "5 ft 7 in", "67 in" -> cm, kept within 120-230; null if there is no number
+  const s = a.toLowerCase().replace(/[’′]/g, "'").replace(/[”″]/g, '"')
+  let cm = null, m
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*cm\b/))) cm = parseFloat(m[1])
+  else if ((m = s.match(/(\d+(?:\.\d+)?)\s*(?:'|ft(?![a-z])|feet\b|foot\b)\s*(\d+(?:\.\d+)?)?/))) cm = parseFloat(m[1]) * 30.48 + (m[2] ? parseFloat(m[2]) * 2.54 : 0)
+  else if ((m = s.match(/(\d+(?:\.\d+)?)\s*(?:in|inch|inches)\b/))) cm = parseFloat(m[1]) * 2.54
+  else if ((m = s.match(/(\d+(?:\.\d+)?)\s*m(?:eters?|etres?)?\b/))) cm = parseFloat(m[1]) * 100
+  else if ((m = s.match(/\d+(?:\.\d+)?/))) { const n = parseFloat(m[0]); cm = n <= 3 ? n * 100 : n <= 8 ? n * 30.48 : n }   // 1.7 = metres, 5.7 = feet, 170 = cm
+  return cm !== null && cm > 0 ? r1(clampN(cm, 120, 230)) : null
+}
+function phWeight(a) {   // "60", "60 kg", "130 lb", "9 st 7" -> kg, kept within 30-250; null if there is no number
+  const s = a.toLowerCase()
+  let kg = null, m
+  if ((m = s.match(/(\d+(?:\.\d+)?)\s*(?:st|stone)\b\s*(?:(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?)?)?/))) kg = parseFloat(m[1]) * 6.35029 + (m[2] ? parseFloat(m[2]) * 0.453592 : 0)
+  else if ((m = s.match(/(\d+(?:\.\d+)?)\s*(?:lb|lbs|pounds?)\b/))) kg = parseFloat(m[1]) * 0.453592
+  else if ((m = s.match(/\d+(?:\.\d+)?/))) kg = parseFloat(m[0])
+  return kg !== null && kg > 0 ? r1(clampN(kg, 30, 250)) : null
+}
+function phPick(answer, keys) {   // which of the words the answer says (typos allowed, the earliest one wins), or null
+  const toks = tokensOf(answer)
+  let best = null, at = 1e9
+  keys.forEach((key) => {
+    ;[key].concat(PH_WORDS[key] || []).forEach((w) => {
+      const i = findTok(toks, [w])
+      if (i >= 0 && i < at) { at = i; best = key }
+    })
+  })
+  return best
+}
+function seedFromPlaceholders() {
+  const s = state.bt
+  if (!CFG.PLACEHOLDERS || state.bt_hideYou || !s || s.seeded) return
+  const a = phAnswers()
+  if (!a) return
+  const st = {}, o = {}, said = []
+  const nm = a.name !== undefined ? (a.name.match(/[A-Za-z][\w-]*/) || [''])[0] : ''   // one word, and not a character that already exists
+  if (nm && !state.npcs[nm.toLowerCase()]) o.name = nm
+  const gender = a.gender !== undefined ? a.gender.slice(0, 20) : ''
+  const h = a.height !== undefined ? phHeight(a.height) : null
+  if (h) { st.height = h; said.push(h + ' cm') }
+  const w = a.weight !== undefined ? phWeight(a.weight) : null
+  if (w) { st.weight = w; said.push(w + ' kg') }
+  const b = a.build !== undefined ? phPick(a.build, ['slim', 'average', 'curvy', 'athletic']) : null
+  if (b) { st.bodyfat = PH_BUILD[b][0]; o.pattern = PH_BUILD[b][1]; o.look = PH_BUILD[b][2]; said.push(b) }
+  const act = a.activity !== undefined ? phPick(a.activity, ['couch', 'active', 'runner']) : null
+  if (act) { Object.assign(o, PH_ACTIVITY[act]); said.push(act) }
+  const ch = a.chest !== undefined ? phPick(a.chest, ['small', 'average', 'large']) : null
+  if (ch) { st.gland = PH_CHEST[ch][0]; st.potential = PH_CHEST[ch][1]; said.push(ch + ' chest') }
+  if (!o.name && !gender && !said.length) return   // nothing usable: do nothing
+  if (!playerPristine(s)) { s.seeded = true; return }   // the story has already moved on: never overwrite it
+  const n = newBT(Object.assign({}, s.start, st), { name: o.name || s.name, pattern: o.pattern || s.pattern, look: o.look || s.look, muscle: o.muscle, activity: o.activity })
+  n.pace = s.pace; n.paceSet = s.paceSet; n.support = s.support
+  if (gender) n.gender = gender   // remembered only, no stat changes
+  n.seeded = true
+  const v = (x) => (x === undefined ? '' : x)
+  n.seedCard = 'name=' + (o.name || '') + ' height=' + v(st.height) + ' weight=' + v(st.weight) + ' bodyfat=' + v(st.bodyfat) + ' underbust= bust= waist= hips= pattern=' + n.pattern + ' look=' + n.look + ' gland=' + v(st.gland) + ' potential=' + v(st.potential)
+  state.bt = n
+  if (said.length) state.bt_cardNote = 'Player sheet set from your answers: ' + said.join(', ') + '.'
 }

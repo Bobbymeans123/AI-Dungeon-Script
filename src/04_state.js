@@ -13,7 +13,9 @@ const newBT = (startOverride, opts) => {
     curses: { hunger: false, leech: '', forced: false, bias: '' }, glandMax: st.potential, gland0: st.gland
   }
   const fatT = st.weight * st.bodyfat / 100
-  REGIONS.forEach((r) => { s.fat[r] = fatT * P[r]; s.mus[r] = MUS_START[r] * k })
+  REGIONS.forEach((r) => { s.fat[r] = fatT * P[r]; s.mus[r] = MUS_START[r] * k * (opts.muscle || 1) })   // muscle: starting muscle multiplier (1 = the usual)
+  s.muscleMul = opts.muscle || 1
+  if (opts.activity) s.activity = opts.activity   // this sheet's own activity factor (otherwise CFG.ACTIVITY)
   s.fat0 = copy(s.fat)
   s.mus0 = copy(s.mus)
   s.other = st.weight - fatT - sum(s.mus)
@@ -57,5 +59,6 @@ const initBT = () => {
     if (CFG.PLAYER) state.bt = newPlayer()
     if (CFG.HIDE_PLAYER) state.bt_hideYou = true
   }
+  if (state.bt && state.bt.name && !CFG.YOU_NAME) CFG.YOU_NAME = state.bt.name   // YOU_NAME follows the player's name
 }
 

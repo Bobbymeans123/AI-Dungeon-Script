@@ -19,6 +19,7 @@ const CFG = {
   SILLY_PACE: 6,
   SILLY_FAT_GAIN: 0.9,   // share of a surplus that becomes fat under SILLY (more forgiving: less of it is lean)
   PLAYER: null,          // seeds YOUR sheet once, on the first turn: { name, start: { ... }, pattern, look, bonus: {}, set: { dex: 12 } }. HIDE_PLAYER must be false to see it
+  PLACEHOLDERS: false,   // true = on the first turn, seed YOUR sheet from state.placeholders (name, height, weight, build, activity, chest). Only the custom preset turns it on
   PLAYER_CARD: false,    // true = a "Player setup" story card (name= height= weight= ...) fills in your own sheet when you edit it. Only the custom preset turns it on
   PROBE: false,         // true = the :probe command exists (writes a story card describing what the hooks receive). Only the custom preset turns it on
   LAZY: false,          // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact

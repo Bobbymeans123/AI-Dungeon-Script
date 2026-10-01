@@ -1,7 +1,7 @@
 // ---------- energy and growth ----------
 const leanMass = (s, m) => m.weight - sum(s.fat)
 const need = (s, m, burn) => {
-  const base = (370 + 21.6 * leanMass(s, m)) * CFG.ACTIVITY
+  const base = (370 + 21.6 * leanMass(s, m)) * (s.activity || CFG.ACTIVITY)
   return Math.round(base + (burn || 0) + milkCost(s) + (s.curses.hunger ? base * 0.25 : 0))
 }
 

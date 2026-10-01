@@ -423,6 +423,88 @@ if (require.main === module) {
   e = fresh(P); const ec4 = turn(e, 'You wait.', 'She smiles [hidden TAGS: ate [ate 5] ] and waves.')
   eq('echo: matched without caring about case', /hidden tags|\[ate/i.test(ec4.out) + ' ' + /She smiles/.test(ec4.out) + ' ' + /and waves\./.test(ec4.out), 'false true true')
 
+  // ---- state.placeholders seeding (custom build only) ----
+  const QS = { name: 'character.name', gender: 'character.gender', height: 'Height in cm?', weight: 'Weight in kg?', build: 'Build? slim, average, curvy or athletic', activity: 'Activity? couch, active or runner', chest: 'Chest? small, average or large' }
+  const asPH = (o) => Object.keys(o).map((k) => ({ question: QS[k], answer: o[k] }))
+  const mkPH = (answers, build, cfg) => {   // a new adventure whose hooks see state.placeholders on the first turn
+    const x = mk('/*PRESET*/' + (cfg || ''), build === undefined ? 'custom' : build)
+    if (answers !== undefined) x.state.placeholders = Array.isArray(answers) || answers === null || typeof answers === 'string' ? answers : asPH(answers)
+    x.firstOut = turn(x, 'You look around.', 'The room is quiet.').out
+    return x
+  }
+  const FULL = { name: 'Zed', gender: 'female', height: '170', weight: '60', build: 'curvy', activity: 'runner', chest: 'large' }
+  const ONE_LINE = 'Player sheet set from your answers: 170 cm, 60 kg, curvy, runner, large chest.'
+  const kc = (x) => +(turn(x, ':body', 'ok').out.match(/\/([\d,]+) kcal/) || [0, '0'])[1].replace(/,/g, '')
+  const wj = (x) => JSON.stringify(x.state.npcs.whitney, (k, v) => (k === 'auto' ? undefined : v))
+  const base = mkPH(undefined)
+  e = mkPH(FULL); sc = stat(e)
+  eq('placeholders: full answer set reaches the player sheet (170 cm, 60 kg, 32% fat, named Zed)', [sc.cm, sc.kg, sc.fat, (sc.head || '').trim()].join(' '), '170 60 32 Zed')
+  eq('placeholders: build curvy = pear + curvy, chest large = gland 130 / potential 300, gender remembered', [e.state.bt.pattern, e.state.bt.look, e.state.bt.gland, e.state.bt.glandMax, e.state.bt.gender].join(' '), 'pear curvy 130 300 female')
+  eq('placeholders: runner = activity 1.5 and starting muscle x1.1', e.state.bt.activity + ' ' + e.state.bt.muscleMul, '1.5 1.1')
+  eq('placeholders: one-line status after seeding (first turn)', e.firstOut.indexOf(ONE_LINE) >= 0, true)
+  eq('placeholders: the line is not repeated on later turns', /Player sheet set/.test(turn(e, ':body', 'ok').out), false)
+  eq('placeholders: Whitney is untouched', wj(e) === wj(base), true)
+  eq('placeholders: YOU_NAME follows the name: "Zed eats" and narrated "You order" both go to the player', (() => { turn(e, 'Zed eats a burger.', 'ok'); turn(e, 'You look around.', 'You order a pizza.'); return pw(e) })(), '1400/0')
+  const needs = {}, mus = {}
+  ;['couch', 'active', 'runner'].forEach((a) => { const x = mkPH({ activity: a }); needs[a] = kc(x); mus[a] = x.state.bt.mus.legs })
+  eq('activity: runner needs x1.111 of active, couch x0.889', (needs.runner / needs.active).toFixed(2) + ' ' + (needs.couch / needs.active).toFixed(2), '1.11 0.89')
+  eq('activity: muscle low for couch (x0.85), default for active, a bit higher for runner (x1.1)', (mus.couch / mus.active).toFixed(2) + ' ' + (mus.runner / mus.active).toFixed(2), '0.85 1.10')
+  eq('build words: slim 18% even athletic | average 24% even off | curvy 32% pear curvy | athletic 16% even athletic',
+    ['slim', 'average', 'curvy', 'athletic'].map((b) => { const x = mkPH({ build: b }); return stat(x).fat + x.state.bt.pattern + x.state.bt.look }).join(' | '), '18evenathletic | 24evenoff | 32pearcurvy | 16evenathletic')
+  eq('chest words: small 60/150, average 90/200, large 130/300 (gland/potential)', ['small', 'average', 'large'].map((c) => { const x = mkPH({ chest: c }); return x.state.bt.gland + '/' + x.state.bt.glandMax }).join(' '), '60/150 90/200 130/300')
+  // partial answers
+  e = mkPH({ height: '172' }); sc = stat(e)
+  eq('partial: only height (172 cm), weight and everything else stay default, line says what was set', [sc.cm, sc.kg, e.state.bt.pattern, e.state.bt.gland].join(' ') + ' ' + (e.firstOut.indexOf('Player sheet set from your answers: 172 cm.') >= 0), '172 60 pear 90 true')
+  e = mkPH({ build: 'athletic', chest: 'small' })
+  eq('partial: build and chest only (no height/weight given: 165 cm, 60 kg)', stat(e).cm + ' ' + stat(e).kg + ' ' + (e.firstOut.indexOf('Player sheet set from your answers: athletic, small chest.') >= 0), '165 60 true')
+  // units
+  const ht = (a) => stat(mkPH({ height: a })).cm
+  eq('height units', ['170', '170cm', '170 cm', '1.70 m', '1.7', "5'7", '5\'7"', '5 ft 7 in', '5ft7', '67 in', '5.7', 'tall', ''].map(ht).join(' '), '170 170 170 170 170 170.2 170.2 170.2 170.2 170.2 173.7 165 165')
+  const wt = (a) => stat(mkPH({ weight: a })).kg
+  eq('weight units', ['60', '60 kg', '60kg', '130 lb', '130lbs', '9 st 7', '9 stone 7 lb', 'abc', ''].map(wt).join(' '), '60 60 60 59 59 60.3 60.3 60 60')
+  eq('clamps: height 300 -> 230, 50 -> 120, 0 -> default; weight 500 -> 250, 10 -> 30, 0 -> default', [ht('300'), ht('50'), ht('0'), wt('500'), wt('10'), wt('0')].join(' '), '230 120 165 250 30 60')
+  // typos and wording
+  eq('typos in build: curvey, atheltic, avrage, slimm, skinny', ['curvey', 'atheltic', 'avrage', 'slimm', 'skinny'].map((b) => stat(mkPH({ build: b })).fat).join(' '), '32 16 24 18 18')
+  eq('typos in activity: runer, couchh, acitve', ['runer', 'couchh', 'acitve'].map((a) => { const x = mkPH({ activity: a }); return (x.state.bt.activity || 'default') }).join(' '), '1.5 1.2 default')
+  eq('typos in chest: smal, larg, averge', ['smal', 'larg', 'averge'].map((c) => mkPH({ chest: c }).state.bt.gland).join(' '), '60 130 90')
+  eq('question wording: case and extra spaces ignored', (() => { const x = mkPH([{ question: '  HEIGHT   in CM?', answer: ' 175 ' }, { question: 'CHARACTER.NAME', answer: 'zed' }]); return stat(x).cm + ' ' + x.state.bt.name })(), '175 zed')
+  eq('name: one word only ("Mary Ann" -> Mary), and not an existing character ("Whitney" ignored)', mkPH({ name: 'Mary Ann' }).state.bt.name + ' ' + JSON.stringify(mkPH({ name: 'Whitney' }).state.bt.name), 'Mary ""')
+  // nonsense and nothing
+  e = mkPH({ height: 'banana', weight: 'lots', build: 'zzz', activity: 'qwerty', chest: 'wow' }); sc = stat(e)
+  eq('nonsense answers: nothing changes (165 cm, 60 kg, no seeded mark, no status line, card is the plain template)', [sc.cm, sc.kg, String(e.state.bt.seeded), /Player sheet set/.test(e.firstOut), e.state.bt.pattern, (e.cards.find((c) => c.type === 'Player setup') || {}).entry === TPL].join(' '), '165 60 undefined false even true')
+  ;[[undefined, 'none set'], [[], 'empty array'], [null, 'null'], ['oops', 'a string']].forEach(([ph, nm]) => {
+    const x = mkPH(ph); const y = stat(x)
+    eq('no usable placeholders (' + nm + '): nothing happens, build still works', y.cm + ' ' + y.kg + ' ' + /Player sheet set/.test(x.firstOut) + ' ' + x.state.bt.seeded, '165 60 false undefined')
+  })
+  e = mkPH({ gender: 'male' })
+  eq('gender alone: remembered, no stat changes, no status line', [e.state.bt.gender, stat(e).cm, stat(e).kg, stat(e).fat, /Player sheet set/.test(e.firstOut)].join(' '), 'male 165 60 26 false')
+  // once only: retry, undo, later :set, later placeholders
+  e = mkPH(FULL); retry(e, 'The room is quiet.')
+  eq('retry does not re-apply (still 170 cm, 60 kg, seeded once)', stat(e).cm + ' ' + stat(e).kg + ' ' + e.state.bt.seeded, '170 60 true')
+  e = mkPH(FULL); const ud = undo(e, 'You look around.', 'The room is quiet.')
+  eq('undo of the first turn and replay seeds exactly once (same sheet, line shown again)', stat(e).cm + ' ' + stat(e).kg + ' ' + (ud.out.indexOf(ONE_LINE) >= 0), '170 60 true')
+  e = mkPH(FULL); turn(e, ':set weight 65', 'ok'); turn(e, 'You wait.', 'ok'); turn(e, 'You wait.', 'ok')
+  eq('later :set changes are never overwritten by the answers', stat(e).kg, '65')
+  turn(e, ':set height 175', 'ok'); const ud2 = undo(e, ':set height 175', 'ok')
+  eq('undoing a later turn does not re-seed (65 kg stays, no seeding line)', stat(e).kg + ' ' + /Player sheet set/.test(ud2.out), '65 false')
+  e = mkPH(undefined); turn(e, 'You eat a burger.', 'ok'); e.state.placeholders = asPH(FULL); turn(e, 'You wait.', 'ok')
+  eq('placeholders that show up after the story has started are ignored (nothing to overwrite)', stat(e).cm + ' ' + stat(e).kg + ' ' + e.state.bt.eaten, '165 60 700')
+  // card interplay
+  e = mkPH(FULL)
+  eq('Player setup card shows the seeded values and is not re-applied', (e.cards.find((c) => c.type === 'Player setup') || {}).entry + ' ' + /Player setup applied/.test(e.firstOut), 'name=Zed height=170 weight=60 bodyfat=32 underbust= bust= waist= hips= pattern=pear look=curvy gland=130 potential=300 false')
+  e.cards.find((c) => c.type === 'Player setup').entry = e.cards.find((c) => c.type === 'Player setup').entry.replace('height=170', 'height=180'); sc = stat(e)
+  eq('editing that card afterwards works and keeps the seeded build, activity and muscle', [sc.cm, sc.kg, e.state.bt.pattern, e.state.bt.activity, e.state.bt.muscleMul, e.state.bt.name].join(' '), '180 60 pear 1.5 1.1 Zed')
+  // other builds
+  e = mkPH(FULL, '')
+  eq('Rue build ignores the placeholders (Rue stays 168 cm, 54 kg, no seeded mark)', stat(e).cm + ' ' + stat(e).kg + ' ' + e.state.bt.seeded + ' ' + e.state.bt.name, '168 54 undefined Rue')
+  // :probe shows the placeholders, :sheet add takes muscle= and activity=
+  e = mkPH(FULL); turn(e, ':probe', 'ok'); const pc = (probes(e)[0] || {}).entry || ''
+  eq(':probe card lists the full state.placeholders (array of 7, every question and answer)', /--- state\.placeholders \(full\) ---/.test(pc) && /array of 7:/.test(pc) && /Height in cm\?/.test(pc) && /Build\? slim, average, curvy or athletic/.test(pc) && /"answer":"runner"/.test(pc), true)
+  e = mkPH(undefined); turn(e, ':probe', 'ok')
+  eq(':probe card says "none" without placeholders', /--- state\.placeholders \(full\) ---\nnone/.test((probes(e)[0] || {}).entry || ''), true)
+  e = fresh(); turn(e, ':sheet add Bo muscle=1.2 activity=1.5', 'ok'); turn(e, ':sheet add Cy muscle=3 activity=9', 'ok'); turn(e, ':sheet add Di', 'ok')
+  eq(':sheet add options: muscle= and activity= work, out-of-range ignored, plain :sheet add unchanged', [e.state.npcs.bo.muscleMul, e.state.npcs.bo.activity, e.state.npcs.cy.muscleMul, e.state.npcs.cy.activity, e.state.npcs.di.muscleMul, e.state.npcs.di.activity].map(String).join(' '), '1.2 1.5 1 undefined 1 undefined')
+
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
 }

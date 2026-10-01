@@ -44,6 +44,12 @@ function parseSheetOpts(str, strict) {
     if (i < 0) { if (strict) bad.push(p); return }
     const key = p.slice(0, i).toLowerCase(), val = p.slice(i + 1)
     if (val === '') return
+    if (key === 'muscle' || key === 'activity') {   // starting muscle multiplier (0.5-1.5) and activity factor (1.0-2.0)
+      const lim = key === 'muscle' ? [0.5, 1.5] : [1.0, 2.0], n = parseFloat(val)
+      if (/^\d+(?:\.\d+)?$/.test(val) && n >= lim[0] && n <= lim[1]) o[key] = n
+      else if (strict) bad.push(p)
+      return
+    }
     if (key === 'pattern') { if (PATTERNS[val]) o.pattern = val; else if (strict) bad.push(p) }
     else if (key === 'look') { if (LOOKS.indexOf(val) >= 0) o.look = val; else if (strict) bad.push(p) }
     else if (key === 'name' && strict) { if (/^[A-Za-z][\w-]*$/.test(val)) o.name = val; else bad.push(p) }

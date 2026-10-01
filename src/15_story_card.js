@@ -44,14 +44,14 @@ function playerPristine(s) {   // nothing has happened to this sheet yet
     MEAS.every((m) => !s.adj[m]) && s.gland === s.gland0 && s.glandMax === s.start.potential && !s.sag && !s.lact.on
 }
 function applyPlayerCard() {
-  state.bt_cardNote = ''
   const cards = typeof storyCards !== 'undefined' && storyCards ? storyCards : []
   let entry = null
   for (let i = 0; i < cards.length; i++) { if (cards[i].type === SETUP_TYPE && cards[i].keys === SETUP_KEYS) { entry = String(cards[i].entry || ''); break } }
   if (entry === null) {
     if (state.bt_setupMade) return   // you deleted it: it is not made again
-    addStoryCard(SETUP_KEYS, SETUP_TEMPLATE, SETUP_TYPE)
-    entry = SETUP_TEMPLATE
+    entry = (state.bt && state.bt.seedCard) || SETUP_TEMPLATE   // after seeding from the placeholders, the card shows those values
+    addStoryCard(SETUP_KEYS, entry, SETUP_TYPE)
+    if (state.bt.seedCard) state.bt.cardApplied = entry   // already applied
   }
   state.bt_setupMade = true
   const s = state.bt
@@ -60,7 +60,7 @@ function applyPlayerCard() {
   const did = Object.keys(r.st).concat(Object.keys(r.o))
   if (did.length) {
     if (playerPristine(s)) {   // rebuild exactly like :sheet add would
-      const n = newBT(Object.assign({}, s.start, r.st), { name: r.o.name || s.name, pattern: r.o.pattern || s.pattern, look: r.o.look || s.look })
+      const n = newBT(Object.assign({}, s.start, r.st), { name: r.o.name || s.name, pattern: r.o.pattern || s.pattern, look: r.o.look || s.look, muscle: s.muscleMul, activity: s.activity })
       n.pace = s.pace; n.paceSet = s.paceSet; n.support = s.support
       state.bt = n
     } else {   // the story has moved on: the same as typing :set for each value
@@ -74,9 +74,11 @@ function applyPlayerCard() {
   const notes = []
   if (did.length && entry !== SETUP_TEMPLATE) notes.push('Player setup applied: ' + (did.length > 4 ? did.length + ' values' : did.join(', ')))
   if (r.bad.length) notes.push('Player setup skipped: ' + r.bad.join(' '))
-  state.bt_cardNote = notes.join(' | ')
+  state.bt_cardNote = [state.bt_cardNote].concat(notes).filter(Boolean).join(' | ')
 }
 function readCard() {
+  state.bt_cardNote = ''
+  if (CFG.PLACEHOLDERS) seedFromPlaceholders()
   if (CFG.PLAYER_CARD) applyPlayerCard()
   if (!CFG.CARD_READBACK || !state.bt_card) return
   const cards = typeof storyCards !== 'undefined' ? storyCards : []
@@ -111,6 +113,8 @@ function probeCard() {
   const guess = ['character', 'player', 'name', 'characterName', 'playerName', 'you', 'class', 'hero', 'persona', 'user', 'protagonist']
   guess.forEach((k) => L.push('state.' + k + ': ' + (state[k] === undefined ? 'absent' : 'PRESENT = ' + cut(state[k], 300))))
   Object.keys(state).filter((k) => /char|player|name|class|hero|persona|user|protag/i.test(k) && guess.indexOf(k) < 0).forEach((k) => L.push('state.' + k + ' (found by name) = ' + cut(state[k], 300)))
+  L.push('', '--- state.placeholders (full) ---')
+  L.push(state.placeholders === undefined || state.placeholders === null ? 'none' : (Array.isArray(state.placeholders) ? 'array of ' + state.placeholders.length + ': ' : typeof state.placeholders + ': ') + cut(state.placeholders, 4000))
   const H = typeof history !== 'undefined' && history ? history : []
   L.push('', '--- history: ' + H.length + ' entries ---')
   const shown = []
