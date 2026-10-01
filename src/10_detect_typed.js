@@ -3,6 +3,21 @@
 const normText = (text) => text.toLowerCase()
   .replace(/\b(push|pull|sit|press)[- ]ups?\b/g, '$1up')
   .replace(/\bice[- ]cream\b/g, 'icecream')
+  // multi-word foods become one word so the pieces ("hot", "dog", "soda") are not read on their own
+  .replace(/\bhot[- ]dogs?\b/g, 'hotdog').replace(/\bcorn[- ]dogs?\b/g, 'corndog').replace(/\bpork[- ]chops?\b/g, 'porkchop')
+  .replace(/\blamb[- ]chops?\b/g, 'lambchop').replace(/\bfried[- ]chicken\b/g, 'friedchicken')
+  .replace(/\b(?:cotton[- ]candy|candy[- ]floss)\b/g, 'cottoncandy').replace(/\bfunnel[- ]cakes?\b/g, 'funnelcake')
+  .replace(/\bcaramel[- ]apples?\b/g, 'caramelapple').replace(/\bs['’]?mores?\b/g, 'smores')
+  .replace(/\bsweet[- ]tea\b/g, 'sweettea').replace(/\benergy[- ]drinks?\b/g, 'energydrink')
+  // drinks with no calories must be joined before plain "soda" or "water" can be read
+  .replace(/\b(?:diet|zero[- ]sugar|sugar[- ]free)[- ](?:soda|coke|cola|pepsi|lemonade)\b|\bcoke[- ]zero\b|\bzero[- ]sugar\b/g, 'dietsoda')
+  .replace(/\bclub[- ]soda\b/g, 'clubsoda').replace(/\bsparkling[- ]water\b/g, 'sparklingwater')
+  // things that look like food but are not
+  .replace(/\bbaking[- ]soda\b/g, 'bakingsoda').replace(/\bpie[- ]charts?\b/g, 'piechart').replace(/\bcookie[- ]cutters?\b/g, 'cookiecutter')
+  .replace(/\bcandy[- ](?:colou?red|striped|apple red)\b/g, 'candycolored')
+  // drink sizes become one word each
+  .replace(/\b(?:1|one)[- ]?(?:l|liter|litre)\b/g, 'oneliter').replace(/\b(?:2|two)[- ]?(?:l|liter|litre)s?\b/g, 'twoliter')
+  .replace(/\b(?:64[- ]?oz|big[- ]gulp)\b/g, 'biggulp')
   .replace(/(.)\1{2,}/g, '$1$1')
   .replace(/[^a-z0-9'\- ]+/g, ' ')
 const tokensOf = (text) => normText(text).split(/\s+/).filter(Boolean)
@@ -19,8 +34,10 @@ function editDist(a, b, subCost) {   // Damerau-Levenshtein: a swapped pair of l
   }
   return d[a.length][b.length]
 }
+const NOT_THIS = { steak: ['stake', 'steal', 'steam', 'steel', 'stack', 'steep'], steaks: ['stakes', 'steals'], churro: ['church'], churros: ['churches'] }   // real words that must not be read as the food
 function near(tok, word) {
   if (tok === word) return true
+  if (NOT_THIS[word] && NOT_THIS[word].indexOf(tok) >= 0) return false
   if (!CFG.FUZZY) return false
   const L = word.length
   if (tok.length >= 3 && tok.length < L && tok.length >= L - 1 && word.startsWith(tok)) return true   // last letter missing ("cak")
@@ -43,12 +60,14 @@ const FOODS = [   // [words, kcal per serving, kcal for the whole thing (optiona
   [['burger', 'burgers', 'cheeseburger', 'hamburger'], 550],
   [['sandwich', 'sandwiches', 'sub', 'wrap', 'burrito', 'taco', 'tacos'], 400],
   [['salad', 'salads'], 250],
-  [['steak', 'chicken', 'pork', 'fish', 'meat', 'ribs', 'sausage', 'bacon', 'ham', 'turkey', 'lamb'], 450],
+  [['steak', 'steaks', 'chicken', 'pork', 'fish', 'meat', 'ribs', 'sausage', 'bacon', 'ham', 'turkey', 'lamb', 'ribeye', 'sirloin', 'porkchop', 'porkchops', 'lambchop', 'lambchops', 'brisket', 'roast', 'meatball', 'meatballs', 'kebab', 'kebabs', 'kabob', 'kebob', 'hotdog', 'hotdogs', 'wings', 'nuggets', 'friedchicken', 'bbq'], 450],
   [['pasta', 'spaghetti', 'noodles', 'noodle', 'lasagna', 'ramen', 'macaroni'], 450],
   [['rice', 'curry', 'sushi'], 300],
   [['soup', 'stew', 'porridge', 'oatmeal', 'cereal'], 250],
-  [['fries', 'chips', 'crisps', 'nachos', 'popcorn'], 400],
-  [['bread', 'toast', 'bagel', 'roll', 'rolls', 'pancake', 'pancakes', 'waffle', 'waffles'], 150],
+  [['fries', 'chips', 'crisps', 'nachos', 'popcorn', 'pretzel', 'pretzels', 'corndog', 'corndogs'], 400],
+  [['bread', 'toast', 'bagel', 'roll', 'rolls'], 150],
+  [['pancake', 'pancakes', 'waffle', 'waffles'], 150],
+  [['cottoncandy', 'fudge', 'smores', 'caramelapple', 'churro', 'churros', 'funnelcake'], 300],
   [['egg', 'eggs', 'omelette', 'omelet'], 75],
   [['apple', 'apples', 'banana', 'bananas', 'fruit', 'orange', 'oranges', 'grapes', 'berries', 'strawberries', 'peach', 'pear'], 100],
   [['cookie', 'cookies', 'biscuit', 'biscuits', 'brownie', 'brownies'], 160],
@@ -60,6 +79,8 @@ const FOODS = [   // [words, kcal per serving, kcal for the whole thing (optiona
   [['beer', 'wine', 'cocktail', 'whiskey', 'vodka', 'ale'], 150],
   [['cheese', 'yogurt', 'yoghurt', 'butter'], 200],
   [['nuts', 'peanuts', 'almonds', 'granola', 'bar'], 200],
+  [['sweettea', 'energydrink'], 150],
+  [['dietsoda', 'clubsoda', 'sparklingwater'], 0],
   [['water', 'tea', 'coffee'], 0]
 ]
 const MEALS = { breakfast: 450, brunch: 600, lunch: 600, dinner: 700, supper: 700, snack: 200, snacks: 300, meal: 500, dessert: 350, feast: 1500 }
@@ -71,7 +92,7 @@ const LAZY_KCAL = { meal: 700, snack: 300, sweet: 400 }
 const LAZY_CLASS = {   // food group (first word of its FOODS row) -> class. Drinks and water are not listed: they keep their own kcal
   burger: 'meal', sandwich: 'meal', pizza: 'meal', salad: 'meal', steak: 'meal', pasta: 'meal', rice: 'meal', soup: 'meal',
   fries: 'snack', bread: 'snack', egg: 'snack', apple: 'snack', cheese: 'snack', nuts: 'snack',
-  cake: 'sweet', cupcake: 'sweet', cookie: 'sweet', chocolate: 'sweet', icecream: 'sweet', donut: 'sweet',
+  pancake: 'sweet', cottoncandy: 'sweet', cake: 'sweet', cupcake: 'sweet', cookie: 'sweet', chocolate: 'sweet', icecream: 'sweet', donut: 'sweet',
   breakfast: 'meal', brunch: 'meal', lunch: 'meal', dinner: 'meal', supper: 'meal', meal: 'meal', feast: 'meal', snack: 'snack', snacks: 'snack', dessert: 'sweet'
 }
 const SIZE = { massive: 1.5, huge: 1.5, giant: 1.5, double: 1.5, mountain: 1.5, small: 0.5, little: 0.5, tiny: 0.5, half: 0.5 }
@@ -84,7 +105,11 @@ function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mod
   if (!CFG.LAZY) return parts.reduce((t, p) => t + p.kcal, 0)
   const by = { meal: [], snack: [], sweet: [] }
   let total = 0
-  parts.forEach((p) => { if (by[p.cls]) by[p.cls].push(p); else total += p.kcal })
+  parts.forEach((p) => {
+    if (by[p.cls]) by[p.cls].push(p)
+    else if (p.drink && p.size) total += (p.kcal / p.qty) * Math.min(2, p.size * p.qty)   // a giant cup of soda
+    else total += p.kcal
+  })
   const main = by.meal.length ? 'meal' : by.sweet.length ? 'sweet' : ''   // snacks next to a meal or sweet are part of it
   ;['meal', 'sweet', 'snack'].forEach((c) => {
     let list = by[c]
@@ -97,11 +122,24 @@ function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mod
   })
   return total
 }
+const LABELS = { dietsoda: 'diet soda', clubsoda: 'club soda', sparklingwater: 'sparkling water', hotdog: 'hot dog', hotdogs: 'hot dogs', corndog: 'corn dog', corndogs: 'corn dogs', porkchop: 'pork chop', porkchops: 'pork chops', lambchop: 'lamb chop', lambchops: 'lamb chops', friedchicken: 'fried chicken', cottoncandy: 'cotton candy', funnelcake: 'funnel cake', caramelapple: 'caramel apple', smores: "s'mores", sweettea: 'sweet tea', energydrink: 'energy drink' }
+const sipLine = (k, labels) => (k ? state.npcs[k].name : 'You') + ' sipped ' + labels.map(withArticle).join(' and ') + ' (0 kcal, very virtuous)'
+const withArticle = (l) => (/s$|water$|^fudge$|^bbq$/.test(l) ? l : 'a ' + l)
+// ---- drinks: the container sets the amount (real kcal, also in lazy mode) ----
+const DRINK_ROWS = ['milk', 'soda', 'sweettea']   // FOODS rows (first word) that use containers
+const GAG = ['dietsoda', 'clubsoda', 'sparklingwater', 'water']   // zero-kcal drinks that get a light status line when named exactly
+const SIZE_DRINK = { oneliter: 420, twoliter: 840, biggulp: 800 }   // a named size can sit a few words away ("a 2-liter bottle of soda")
+const CONTAINER = { can: 150, cans: 150, glass: 200, glasses: 200, cup: 200, cups: 200, bottle: 210, bottles: 210, jug: 420, jugs: 420 }   // must sit right next to the drink ("a can of soda")
+function containerNear(toks, i) {   // kcal for the container around the drink word at i, or 0
+  for (let j = Math.max(0, i - 4); j <= Math.min(toks.length - 1, i + 3); j++) { if (SIZE_DRINK[toks[j]]) return SIZE_DRINK[toks[j]] }
+  const before = toks[i - 1] === 'of' ? toks[i - 2] : toks[i - 1]
+  return CONTAINER[before] || CONTAINER[toks[i + 1]] || 0
+}
 function detectAte(text) { return detectAteInfo(text, false).kcal }
 function detectAteInfo(text, force) {   // force: the caller already knows this sentence starts a meal, so no eating verb is needed
   const toks = tokensOf(text), foods = [], labels = [], parts = []
   const strong = findTok(toks, STRONG_EAT) >= 0, weak = findTok(toks, WEAK_EAT) >= 0
-  if (!strong && !weak && !force) return { kcal: 0, foods: foods, label: '', parts: parts }
+  if (!strong && !weak && !force) return { kcal: 0, foods: foods, label: '', parts: parts, gag: [] }
   let total = 0, found = false
   const qtyBefore = (i) => {   // nearest quantity word in the few words before the food
     for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
@@ -116,25 +154,26 @@ function detectAteInfo(text, force) {   // force: the caller already knows this 
     if (i < 0) return
     found = true
     foods.push(f[0][0])
-    const lab = (SIZE[toks[i - 1]] ? toks[i - 1] + ' ' : '') + toks[i]
+    const word = toks[i], lab = (SIZE[toks[i - 1]] ? toks[i - 1] + ' ' : '') + (LABELS[word] || word)
     labels.push(lab)
     const q = qtyBefore(i)
-    let kcal = f[1]
+    const drink = DRINK_ROWS.indexOf(f[0][0]) >= 0, base = (drink && containerNear(toks, i)) || f[1]   // a can, glass or 2-liter sets the kcal of a soft drink
+    let kcal = base
     if (q) {
-      if (/^d/.test(q)) kcal = f[1] * parseFloat(q)
-      else if (QTY[q]) kcal = f[1] * QTY[q]
-      else if (q === 'half') kcal = f[2] ? f[2] / 2 : f[1] * 0.5
-      else kcal = f[2] ? f[2] : f[1] * 4   // whole / entire / all
+      if (/^d/.test(q)) kcal = base * parseFloat(q)
+      else if (QTY[q]) kcal = base * QTY[q]
+      else if (q === 'half') kcal = f[2] ? f[2] / 2 : base * 0.5
+      else kcal = f[2] ? f[2] : base * 4   // whole / entire / all
     }
     const num = q && (/^\d/.test(q) ? parseFloat(q) : QTY[q])
-    parts.push({ food: f[0][0], kcal: kcal, label: lab, cls: LAZY_CLASS[f[0][0]], size: sizeNear(toks, i), qty: num || 1 })
+    parts.push({ food: f[0][0], word: word, kcal: kcal, label: lab, cls: LAZY_CLASS[f[0][0]], size: sizeNear(toks, i), qty: num || 1, drink: drink, gag: kcal === 0 && GAG.indexOf(word) >= 0 })   // gag: an exact zero-kcal drink, never a fuzzy match
   })
   Object.keys(MEALS).forEach((w) => {
-    if (findTok(toks, [w]) >= 0 && !found) { found = true; foods.push(w); labels.push(w); parts.push({ food: w, kcal: MEALS[w], label: w, cls: LAZY_CLASS[w], size: null, qty: 1 }) }
+    if (findTok(toks, [w]) >= 0 && !found) { found = true; foods.push(w); labels.push(w); parts.push({ food: w, word: w, kcal: MEALS[w], label: w, cls: LAZY_CLASS[w], size: null, qty: 1 }) }
   })
-  if (!found) return { kcal: strong ? (CFG.LAZY ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  if (!found) return { kcal: strong ? (CFG.LAZY ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts, gag: [] }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
   if (/\b(?:just a|a little|a tiny|a small) (?:taste|nibble|bite|sip)\b/.test(normText(text))) parts.forEach((p) => { p.size = 0.5 })   // "just a taste"
-  return { kcal: Math.round(Math.min(mealKcal(parts), 5000)), foods: foods, label: labels.map((l) => (/s$/.test(l) ? l : 'a ' + l)).join(' and '), parts: parts }
+  return { kcal: Math.round(Math.min(mealKcal(parts), 5000)), foods: foods, label: labels.map(withArticle).join(' and '), parts: parts, gag: parts.filter((p) => p.gag).map((p) => p.label) }
 }
 
 const EX_LEGS = ['squat', 'squats', 'lunge', 'lunges', 'calf', 'legpress']
@@ -186,7 +225,7 @@ function autoDetectAll(text) {
     keys = both && !state.bt_hideYou ? [''].concat(names) : names
   }
   const ev = []
-  const kcal = detectAte(text), ex = detectExercise(text)
+  const ate = detectAteInfo(text, false), kcal = ate.kcal, ex = detectExercise(text)
   keys.forEach((k) => {
     const s = sheetOf(k)
     if (!s) return
@@ -204,6 +243,10 @@ function autoDetectAll(text) {
   }
   state.bt_touched = []
   res.notes = applyAll(ev, false)
+  if (ate.gag.length) {   // a zero-kcal drink: nothing counted, just a light line
+    keys.forEach((k) => { if (sheetOf(k)) res.notes.push(sipLine(k, ate.gag)) })
+    if (!res.touched.length) res.touched = keys.slice()
+  }
   if (res.notes.length) res.touched = res.touched.length ? res.touched : state.bt_touched
   return res
 }

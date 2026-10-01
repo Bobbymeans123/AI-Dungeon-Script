@@ -156,6 +156,63 @@ if (require.main === module) {
   e = fresh(LZ); turn(e, 'You look around.', 'Whitney orders a massive double burger.'); retry(e, 'Whitney orders a massive double burger.')
   eq('lazy: retry of a narrated meal does not double', kcal(e), 1050)
 
+  // ---- step 3b: food list expansion (lazy mode unless noted) ----
+  const narr = (txt, cfg) => { const x = fresh(cfg || LZ); const r = turn(x, 'You look around.', txt); return { kcal: kcal(x), out: r.out } }
+  const both = (name, item, want, narrVerb) => {   // typed "Whitney eats X." and narrated "Whitney orders X."
+    eq(name + ' typed', typed('Whitney eats ' + item + '.'), want)
+    eq(name + ' narrated', narr('Whitney ' + (narrVerb || 'orders') + ' ' + item + '.').kcal, want)
+  }
+  ;['steak', 'ribeye', 'sirloin', 'ribs', 'a pork chop', 'lamb chops', 'brisket', 'roast', 'meatballs', 'a kebab', 'a hot dog', 'sausage', 'wings', 'nuggets', 'fried chicken', 'bbq'].forEach((f) => both('meal ' + f, f, 700))
+  ;['cotton candy', 'candy floss', 'candy', 'a donut', 'a doughnut', 'a churro', 'a funnel cake', 'a brownie', 'a cookie', 'pie', 'a waffle', 'a pancake', 'a caramel apple', 'fudge', "s'mores"].forEach((f) => both('sweet ' + f, f, 400))
+  ;['popcorn', 'a pretzel', 'nachos', 'a corn dog'].forEach((f) => both('snack ' + f, f, 300))
+  eq('steak and fries = one meal (700, not 700 + 450)', typed('Whitney eats steak and fries.'), 700)
+  eq('steak and fries narrated = one meal', narr('Whitney orders steak and fries.').kcal, 700)
+  eq('steak with meat and fries: "meat" not counted separately', narr('Whitney orders a steak, thick slabs of meat, with fries.').kcal, 700)
+  eq('hot dog and fries = one meal', typed('Whitney eats a hot dog and fries.'), 700)
+  // drinks keep real kcal, containers set the amount
+  const dr = (txt) => typed('Whitney drinks ' + txt + '.')
+  eq('can of soda = 150', dr('a can of soda'), 150)
+  eq('glass of lemonade = 200', dr('a glass of lemonade'), 200)
+  eq('cup of juice = 200', dr('a cup of juice'), 200)
+  eq('bottle of cola = 210', dr('a bottle of cola'), 210)
+  eq('1 L jug of soda = 420', dr('a 1 L jug of soda'), 420)
+  eq('2-liter of soda = 840', dr('a 2-liter of soda'), 840)
+  eq('2-liter bottle of soda = 840 (not 210)', dr('a 2-liter bottle of soda'), 840)
+  eq('64 oz big gulp of soda = 800', dr('a 64 oz big gulp of soda'), 800)
+  eq('big gulp of cola = 800', dr('a big gulp of cola'), 800)
+  eq('glass of sweet tea = 200', dr('a glass of sweet tea'), 200)
+  eq('can of energy drink = 150', dr('a can of energy drink'), 150)
+  eq('giant cup of soda = 200 x 1.5 = 300', dr('a giant cup of soda'), 300)
+  eq('two huge 2-liters of soda capped at x2 = 1,680', dr('two huge 2-liters of soda'), 1680)
+  eq('narrated can of soda = 150', narr('Whitney orders a can of soda.').kcal, 150)
+  eq('narrated 2-liter of soda = 840', narr('Whitney grabs a 2-liter of soda.').kcal, 840)
+  eq('narrated: Whitney drinks a glass of lemonade = 200', narr('Whitney drinks a glass of lemonade.').kcal, 200)
+  eq('LAZY off: can of soda = 150, plain soda still 140', typed('Whitney drinks a can of soda.', 'CFG.LAZY = false') + '/' + typed('Whitney drinks soda.', 'CFG.LAZY = false'), '150/140')
+  // zero-kcal gag drinks: 0, never also plain soda, light status line
+  ;['a diet soda', 'a diet coke', 'a coke zero', 'a zero sugar soda', 'a sugar-free soda', 'a club soda', 'a sparkling water', 'water'].forEach((d) => {
+    const x = fresh(LZ); const r = turn(x, 'Whitney drinks ' + d + '.', 'Fine.')
+    eq('gag typed ' + d + ' = 0 + line', kcal(x) + ' ' + /sipped .* \(0 kcal, very virtuous\)/.test(r.out), '0 true')
+    const n = narr('Whitney grabs ' + d + '.')
+    eq('gag narrated ' + d + ' = 0 + line', n.kcal + ' ' + /sipped .* \(0 kcal, very virtuous\)/.test(n.out), '0 true')
+  })
+  eq('diet soda line text', (turn(fresh(LZ), 'Whitney drinks a diet soda.', 'Fine.').out.match(/Whitney sipped[^)]*\)/) || [''])[0], 'Whitney sipped a diet soda (0 kcal, very virtuous)')
+  eq('diet soda LAZY off = 0 too', typed('Whitney drinks a diet soda.', 'CFG.LAZY = false'), 0)
+  eq('diet soda with a burger: burger only', typed('Whitney eats a burger and drinks a diet soda.'), 700)
+  eq('plain soda next to a diet soda still counts the plain one', typed('Whitney drinks a can of soda and a diet soda.'), 150)
+  // look-alikes and typos count nothing
+  ;[['baking soda', 'Whitney grabs baking soda.'], ['on a diet', 'Whitney is on a diet and grabs her bag.'], ['candy-colored', 'Whitney grabs her candy-colored bag.'],
+    ['cookie-cutter', 'Whitney grabs a cookie-cutter.'], ['pie chart', 'Whitney grabs a pie chart.'], ['stake', 'Whitney grabs a stake.'], ['steal', 'Whitney grabs a steal.'], ['church', 'Whitney orders at the church.']].forEach(([n, t]) => {
+    eq('false positive: ' + n + ' typed', typed(t), 0)
+    eq('false positive: ' + n + ' narrated', narr(t.replace('grabs', 'orders')).kcal, 0)
+  })
+  eq('typo "steack" still reads as steak', typed('Whitney eats a steack.'), 700)
+  // LAZY off numbers unchanged and fixtures
+  eq('LAZY off: steak and fries = 450 + 400', typed('Whitney eats steak and fries.', 'CFG.LAZY = false'), 850)
+  eq('LAZY off: pancake = 150 (unchanged)', typed('Whitney eats a pancake.', 'CFG.LAZY = false'), 150)
+  e = fresh(LZ); turn(e, 'You look around.', fx('burger_scene')); const bs = kcal(e)
+  e = fresh(LZ); turn(e, 'You look around.', fx('ice_cream_scene'))
+  eq('fixtures still: burger_scene 1,050 and ice_cream_scene 0', bs + '/' + kcal(e), '1050/0')
+
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
 }
