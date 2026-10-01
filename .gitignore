@@ -1,0 +1,2 @@
+# exported adventures contain account ids: never commit them
+exports/
