@@ -1,19 +1,20 @@
 // Test harness: node bt_test.js   (loads the Library + Input/Output like AI Dungeon does)
 const fs = require('fs')
 const rd = (f) => fs.readFileSync(__dirname + '/' + f, 'utf8')
-const lib = rd(process.env.BT_LIB || 'bt_library_whitney.js')
+const libs = {}   // the built Library to test: the Rue build (default) or build 'custom' (bt_library_whitney_custom.js)
+const libOf = (build) => libs[build || ''] || (libs[build || ''] = rd(build === 'custom' ? 'bt_library_whitney_custom.js' : (process.env.BT_LIB || 'bt_library_whitney.js')))
 const hooks = { in: rd('bt_input.js'), out: rd('bt_output.js') }
 const patch = process.env.BT_CFG ? ';' + process.env.BT_CFG : ''   // e.g. "CFG.LAZY=true", appended after the Library
 
 function run(kind, text, env) {
-  const src = lib + patch + (/PRESET/.test(env.cfg) ? '' : ';CFG.HIDE_PLAYER = true;CFG.PLAYER = null;CFG.YOU_NAME = "";CFG.SILLY = false;CFG.LAZY = false') + (env.cfg ? ';' + env.cfg : '') + '\n' + hooks[kind].replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
+  const src = libOf(env.build) + patch + (/PRESET/.test(env.cfg) ? '' : ';CFG.HIDE_PLAYER = true;CFG.PLAYER = null;CFG.YOU_NAME = "";CFG.SILLY = false;CFG.LAZY = false') + (env.cfg ? ';' + env.cfg : '') + '\n' + hooks[kind].replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
   const cards = env.cards, add = (k, e, t) => cards.push({ keys: k, entry: e, type: t })
   const upd = (i, k, e, t) => { cards[i] = { keys: k, entry: e, type: t } }
   const rem = (i) => cards.splice(i, 1)
   return new Function('text', 'state', 'info', 'history', 'storyCards', 'addStoryCard', 'updateStoryCard', 'removeStoryCard', 'log', src)(
     text, env.state, { actionCount: env.count }, env.history.slice(), cards, add, upd, rem, () => {}).text
 }
-const mk = (cfg) => ({ state: {}, history: [], cards: [], count: 0, cfg: cfg || '' })
+const mk = (cfg, build) => ({ state: {}, history: [], cards: [], count: 0, cfg: cfg || '', build: build || '' })
 const fx = (n) => fs.readFileSync(__dirname + '/tests/fixtures/' + n + '.txt', 'utf8').trim()
 const W = (env) => env.state.npcs.whitney
 
@@ -44,7 +45,7 @@ module.exports = { mk, turn, retry, undo, run, W }
 if (require.main === module) {
   let fail = 0
   const eq = (name, got, want) => { const ok = got === want; if (!ok) fail++; console.log((ok ? 'PASS ' : 'FAIL ') + name + ': ' + got + (ok ? '' : ' (want ' + want + ')')) }
-  const fresh = (cfg) => { const e = mk(cfg); turn(e, 'You look around.', 'The room is quiet.'); return e }   // seeds sheets
+  const fresh = (cfg, build) => { const e = mk(cfg, build); turn(e, 'You look around.', 'The room is quiet.'); return e }   // seeds sheets
   const kcal = (e) => W(e).eaten || 0
 
   let e = fresh()
@@ -298,6 +299,43 @@ if (require.main === module) {
   eq(':undo meal with no name takes a shared meal back from both', both2(e), '0/0')
   e = fresh(P); turn(e, 'Rue and Whitney share cake.', 'ok'); turn(e, ':undo meal Whitney', 'ok')
   eq(':undo meal Whitney leaves Rue her share', both2(e), '200/0')
+
+  // ---- second preset: build "custom" (Whitney + a default player sheet, no Rue) ----
+  const C = (cfg) => fresh('/*PRESET*/' + (cfg || ''), 'custom')
+  const pw = (x) => (x.state.bt.eaten || 0) + '/' + (x.state.npcs.whitney.eaten || 0)   // player/Whitney
+  e = C()
+  eq('custom: only Whitney is a named sheet, no Rue', Object.keys(e.state.npcs).join(','), 'whitney')
+  eq('custom: a default player sheet exists (165 cm, 60 kg, no name)', /165 cm, 60 kg/.test(turn(e, ':body', 'ok').out) && e.state.bt.name === '', true)
+  const customSrc = rd('bt_library_whitney_custom.js'), rueSrc = rd('bt_library_whitney.js')
+  eq("custom build has none of Rue's stats (name, bust 87, underbust 72, dex 13, CFG.PLAYER)", !/name: 'Rue'|bust: 87|underbust: 72|dex: 13|CFG\.PLAYER = \{|YOU_NAME = '/.test(customSrc), true)
+  eq('(sanity) the Rue build does have them', /name: 'Rue'/.test(rueSrc) && /bust: 87/.test(rueSrc), true)
+  e = C(); turn(e, 'You eat a burger.', 'Fine.')
+  eq('custom: "You eat a burger" counts for the player only', pw(e), '700/0')
+  e = C(); turn(e, 'Whitney eats a burger.', 'Fine.')
+  eq('custom: "Whitney eats a burger" counts only for Whitney', pw(e), '0/700')
+  e = C(); const cn = turn(e, 'You look around.', 'You order a burger and settle in.')
+  eq('custom: narrated "You order ..." goes to the player, status says You', pw(e) + ' ' + /Counted: You ate a burger \(~700 kcal\)\. Type :undo meal/.test(cn.out), '700/0 true')
+  e = C(); turn(e, 'You look around.', 'Whitney orders a burger.')
+  eq('custom: narrated "Whitney orders ..." goes only to Whitney', pw(e), '0/700')
+  ;[['We share fries.', '150/150'], ['Whitney and I share a sundae.', '200/200']].forEach(([txt, want]) => {
+    e = C(); turn(e, txt, 'Fine.'); eq('custom: share typed "' + txt + '" (player/Whitney)', pw(e), want)
+    e = C(); turn(e, 'You look around.', txt); eq('custom: share narrated "' + txt + '"', pw(e), want)
+  })
+  e = C(); turn(e, 'You eat a burger.', 'ok'); turn(e, 'Whitney eats a pizza.', 'ok'); turn(e, ':undo meal Whitney', 'ok')
+  eq('custom: :undo meal Whitney removes only Whitney', pw(e), '700/0')
+  e = C(); turn(e, 'You eat a burger.', 'ok'); turn(e, 'Whitney eats a pizza.', 'ok'); turn(e, ':undo meal', 'ok'); const cu1 = pw(e)
+  turn(e, ':undo meal', 'ok')
+  eq('custom: :undo meal with no name removes the most recent first, then the player', cu1 + ' ' + pw(e), '700/0 0/0')
+  e = C(); turn(e, ':set height 170', 'ok'); turn(e, ':set weight 60', 'ok')
+  eq(':set fills in the player sheet (170 cm, 60 kg), Whitney untouched', /170 cm, 60 kg/.test(turn(e, ':body', 'ok').out) && /196 cm, 105 kg/.test(turn(e, ':body Whitney', 'ok').out), true)
+  e = C(); turn(e, 'You go to sleep for the night.', 'Morning comes.')
+  eq('custom: sleep advances both', e.state.bt.day + '/' + e.state.npcs.whitney.day, '2/2')
+  e = C(); turn(e, ':body', 'ok'); const seeded = JSON.stringify(Object.keys(e.state.npcs)) + e.state.bt_hideYou
+  eq('custom: your sheet is shown (HIDE_PLAYER false), SILLY is on (burger = 700)', seeded + ' ' + (() => { const x = C(); turn(x, 'You eat a burger.', 'ok'); return x.state.bt.eaten })(), '["whitney"]undefined 700')
+  e = C(); turn(e, 'You look around.', fx('burger_scene'))
+  eq('custom: burger_scene: Whitney 1,050, "You order ..." goes to the player (700)', pw(e), '700/1050')
+  e = C(); turn(e, 'You look around.', fx('ice_cream_scene'))
+  eq('custom: ice_cream_scene counts nothing', pw(e), '0/0')
 
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
