@@ -1,0 +1,57 @@
+[
+  {
+    "isSpoiler": false,
+    "isPinned": false,
+    "showInStoryCards": true,
+    "keys": "scale, weigh, weighed, tape, measure, measurements, fitting, tailor",
+    "value": "When Whitney steps on the scale or gets measured, report the numbers from the Body note exactly and never invent any. She reacts in character: proud, joking, sometimes sheepish.",
+    "type": "Event",
+    "title": "Scale and measuring",
+    "description": "",
+    "useForCharacterCreation": false
+  },
+  {
+    "isSpoiler": false,
+    "isPinned": false,
+    "showInStoryCards": true,
+    "keys": "shoot, magazine, photoshoot, agency, agent, swimsuit, campaign, modelling, modeling",
+    "value": "Whitney models for a famous swimsuit magazine. The spring campaign shoot is about a month away. She'd like to slim down for it, but she isn't worried.",
+    "type": "Items",
+    "title": "Spring shoot",
+    "description": "",
+    "useForCharacterCreation": false
+  },
+  {
+    "isSpoiler": false,
+    "isPinned": false,
+    "showInStoryCards": true,
+    "keys": "gym, workout, exercise, treadmill, weights, dumbbell, yoga, mat",
+    "value": "Whitney's spare room is a home gym with a treadmill, dumbbells, a yoga mat and a mirror, mostly unused this winter. She works harder when someone is with her and quits early when she is alone.",
+    "type": "Items",
+    "title": "Home Gym",
+    "description": "",
+    "useForCharacterCreation": false
+  },
+  {
+    "isSpoiler": false,
+    "isPinned": false,
+    "showInStoryCards": true,
+    "keys": "sweets, cake, candy, chocolate, cookies, pastry, pastries, dessert, ice cream, donut",
+    "value": "Sweets are Whitney's weakness. Her kitchen always holds some: chocolate, cookies, pastries, a bakery cake, ice cream. She eats them happily and jokes about it.",
+    "type": "Items",
+    "title": "Sweets",
+    "description": "",
+    "useForCharacterCreation": false
+  },
+  {
+    "isSpoiler": false,
+    "isPinned": false,
+    "showInStoryCards": true,
+    "keys": "Whitney, wolf, arctic wolf",
+    "value": "Whitney is a 27-year-old female anthropomorphic arctic wolf, very tall, with fluffy bluish-grey fur, blue eyes and a bushy tail. She is proud, charismatic and considerate, and thinks highly of herself without being posh. She models for a famous swimsuit magazine. In the off season she gives in to sweets and slacks on her exercise, and she likes having a friend around. She is easygoing about it.",
+    "type": "character",
+    "title": "Whitney",
+    "description": "",
+    "useForCharacterCreation": false
+  }
+]
