@@ -20,6 +20,7 @@ const CFG = {
   NPC_MAX: 2,            // other tracked characters go into the AI's note only while their name is in the recent story, at most this many
   HIDE_PLAYER: false,   // true = you are not tracked, only the characters below (unnamed commands and tags then go to the first one)
   CHARACTERS: [],       // characters that exist from the first turn: { name, start: { weight: 70, ... }, pattern, look, bonus: { cha: 2 } } (see presets/)
+  LAZY: false,           // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
   YOU_NAME: '',          // who "you" means in the AI's narration when your own sheet is hidden, e.g. 'Rue'. Empty = "you" is not attributed
   AUTO: true,           // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
   STATUS: 'commands',    // add a status line to the reply: 'off' | 'commands' (commands and spotted actions) | 'always'
@@ -34,6 +35,7 @@ const CARD_KEYS = 'bodysheet'   // nothing in the story says this, so the card n
 
 // Preset: Whitney scenario. Applied right after the config, so it overrides the defaults.
 CFG.HIDE_PLAYER = true   // you are not tracked, only the characters below (unnamed commands and tags go to the first one)
+CFG.LAZY = true          // flat meal amounts with size words (see the config)
 CFG.CHARACTERS = [
   { name: 'Whitney', pattern: 'pear', look: 'curvy', bonus: { cha: 2 },   // proud and charismatic
     start: { height: 196, weight: 105, bodyfat: 34, underbust: 96, bust: 116, waist: 100, hips: 128, arm: 36, thigh: 75, gland: 150, potential: 225 } }
@@ -573,6 +575,7 @@ function applyEvents(s, events, skip) {
 // Text is lower-cased, stretched letters are squeezed ("sleeeep" -> "sleep") and matching forgives small typos.
 const normText = (text) => text.toLowerCase()
   .replace(/\b(push|pull|sit|press)[- ]ups?\b/g, '$1up')
+  .replace(/\bice[- ]cream\b/g, 'icecream')
   .replace(/(.)\1{2,}/g, '$1$1')
   .replace(/[^a-z0-9'\- ]+/g, ' ')
 const tokensOf = (text) => normText(text).split(/\s+/).filter(Boolean)
@@ -636,6 +639,37 @@ const MEALS = { breakfast: 450, brunch: 600, lunch: 600, dinner: 700, supper: 70
 const QTY = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, few: 3, several: 3, both: 2 }
 const STRONG_EAT = ['eat', 'eats', 'ate', 'eating', 'eaten', 'devour', 'devours', 'gulp', 'swallow', 'chew', 'munch', 'nibble', 'bite', 'drink', 'drinks', 'drank', 'sip', 'chug', 'consume', 'scarf', 'stuff', 'wolf', 'feast', 'dine', 'inhale', 'gorge', 'binge', 'feed', 'feeds', 'fed']
 const WEAK_EAT = ['have', 'having', 'take', 'grab', 'try', 'taste', 'sample', 'finish', 'pour', 'order', 'get', 'grab', 'help', 'mix', 'make', 'cook', 'polish', 'share', 'split', 'serve', 'offer', 'give', 'hand', 'has', 'had']
+// ---- lazy mode: a meal is a flat amount, scaled by the biggest/smallest size word near the food ----
+const LAZY_KCAL = { meal: 700, snack: 300, sweet: 400 }
+const LAZY_CLASS = {   // food group (first word of its FOODS row) -> class. Drinks and water are not listed: they keep their own kcal
+  burger: 'meal', sandwich: 'meal', pizza: 'meal', salad: 'meal', steak: 'meal', pasta: 'meal', rice: 'meal', soup: 'meal',
+  fries: 'snack', bread: 'snack', egg: 'snack', apple: 'snack', cheese: 'snack', nuts: 'snack',
+  cake: 'sweet', cupcake: 'sweet', cookie: 'sweet', chocolate: 'sweet', icecream: 'sweet', donut: 'sweet',
+  breakfast: 'meal', brunch: 'meal', lunch: 'meal', dinner: 'meal', supper: 'meal', meal: 'meal', feast: 'meal', snack: 'snack', snacks: 'snack', dessert: 'sweet'
+}
+const SIZE = { massive: 1.5, huge: 1.5, giant: 1.5, double: 1.5, mountain: 1.5, small: 0.5, little: 0.5, tiny: 0.5, half: 0.5 }
+function sizeNear(toks, i) {   // the largest size word in the 4 words before the food, or null
+  let best = null
+  for (let j = Math.max(0, i - 4); j < i; j++) { if (SIZE[toks[j]] && (best === null || SIZE[toks[j]] > best)) best = SIZE[toks[j]] }
+  return best
+}
+function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mode: the sum of the food table
+  if (!CFG.LAZY) return parts.reduce((t, p) => t + p.kcal, 0)
+  const by = { meal: [], snack: [], sweet: [] }
+  let total = 0
+  parts.forEach((p) => { if (by[p.cls]) by[p.cls].push(p); else total += p.kcal })
+  const main = by.meal.length ? 'meal' : by.sweet.length ? 'sweet' : ''   // snacks next to a meal or sweet are part of it
+  ;['meal', 'sweet', 'snack'].forEach((c) => {
+    let list = by[c]
+    if (!list.length || (c === 'snack' && main)) return
+    let sizes = list.map((p) => p.size).filter(Boolean)
+    if (!sizes.length && c === main) sizes = by.snack.map((p) => p.size).filter((s) => s > 1)   // "a mountain of fries" makes the meal big
+    const size = sizes.length ? Math.max.apply(null, sizes) : 1
+    const qty = Math.max.apply(null, list.map((p) => p.qty))
+    total += LAZY_KCAL[c] * Math.min(2, size * qty)
+  })
+  return total
+}
 function detectAte(text) { return detectAteInfo(text, false).kcal }
 function detectAteInfo(text, force) {   // force: the caller already knows this sentence starts a meal, so no eating verb is needed
   const toks = tokensOf(text), foods = [], labels = [], parts = []
@@ -655,7 +689,8 @@ function detectAteInfo(text, force) {   // force: the caller already knows this 
     if (i < 0) return
     found = true
     foods.push(f[0][0])
-    labels.push(toks[i])
+    const lab = (SIZE[toks[i - 1]] ? toks[i - 1] + ' ' : '') + toks[i]
+    labels.push(lab)
     const q = qtyBefore(i)
     let kcal = f[1]
     if (q) {
@@ -664,14 +699,15 @@ function detectAteInfo(text, force) {   // force: the caller already knows this 
       else if (q === 'half') kcal = f[2] ? f[2] / 2 : f[1] * 0.5
       else kcal = f[2] ? f[2] : f[1] * 4   // whole / entire / all
     }
-    total += kcal
-    parts.push({ food: f[0][0], kcal: kcal, label: toks[i] })
+    const num = q && (/^\d/.test(q) ? parseFloat(q) : QTY[q])
+    parts.push({ food: f[0][0], kcal: kcal, label: lab, cls: LAZY_CLASS[f[0][0]], size: sizeNear(toks, i), qty: num || 1 })
   })
   Object.keys(MEALS).forEach((w) => {
-    if (findTok(toks, [w]) >= 0 && !found) { found = true; total += MEALS[w]; foods.push(w); labels.push(w); parts.push({ food: w, kcal: MEALS[w], label: w }) }
+    if (findTok(toks, [w]) >= 0 && !found) { found = true; foods.push(w); labels.push(w); parts.push({ food: w, kcal: MEALS[w], label: w, cls: LAZY_CLASS[w], size: null, qty: 1 }) }
   })
-  if (!found) return { kcal: strong ? 400 : 0, foods: [], label: 'a meal', parts: parts }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
-  return { kcal: Math.round(Math.min(total, 5000)), foods: foods, label: labels.map((l) => (/s$/.test(l) ? l : 'a ' + l)).join(' and '), parts: parts }
+  if (!found) return { kcal: strong ? (CFG.LAZY ? LAZY_KCAL.meal : 400) : 0, foods: [], label: 'a meal', parts: parts }   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  if (/\b(?:just a|a little|a tiny|a small) (?:taste|nibble|bite|sip)\b/.test(normText(text))) parts.forEach((p) => { p.size = 0.5 })   // "just a taste"
+  return { kcal: Math.round(Math.min(mealKcal(parts), 5000)), foods: foods, label: labels.map((l) => (/s$/.test(l) ? l : 'a ' + l)).join(' and '), parts: parts }
 }
 
 const EX_LEGS = ['squat', 'squats', 'lunge', 'lunges', 'calf', 'legpress']
@@ -780,7 +816,10 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     if (!parts.length) return
     narratedEaters(sent).forEach((k) => {
       found[k] = found[k] || {}
-      parts.forEach((p) => { found[k][p.food] = p })
+      parts.forEach((p) => {
+        const old = found[k][p.food]   // the same food in another sentence keeps the bigger size word and quantity
+        found[k][p.food] = old ? Object.assign({}, p, { size: Math.max(old.size || 0, p.size || 0) || null, qty: Math.max(old.qty, p.qty), label: old.label.length >= p.label.length ? old.label : p.label }) : p
+      })
     })
   })
   const out = []
@@ -790,7 +829,7 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     const cool = s.cool || {}
     const fresh = Object.keys(found[k]).filter((f) => cool[f] === undefined || Math.abs(count - cool[f]) > NARRATE_COOLDOWN).map((f) => found[k][f])
     if (!fresh.length) return
-    const kcal = fresh.reduce((t, p) => t + p.kcal, 0)
+    const kcal = mealKcal(fresh)   // one amount for the whole meal (lazy mode: the double burger with a mountain of fries is one 700 x 1.5)
     out.push({ key: k, kcal: Math.round(Math.min(kcal, 5000)), parts: fresh, label: fresh.map((p) => (/s$/.test(p.label) ? p.label : 'a ' + p.label)).join(' and ') })
   })
   return out

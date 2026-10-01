@@ -6,7 +6,7 @@ const hooks = { in: rd('bt_input.js'), out: rd('bt_output.js') }
 const patch = process.env.BT_CFG ? ';' + process.env.BT_CFG : ''   // e.g. "CFG.LAZY=true", appended after the Library
 
 function run(kind, text, env) {
-  const src = lib + patch + (env.cfg ? ';' + env.cfg : '') + '\n' + hooks[kind].replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
+  const src = lib + patch + (/LAZY/.test(env.cfg) ? '' : ';CFG.LAZY = false') + (env.cfg ? ';' + env.cfg : '') + '\n' + hooks[kind].replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
   const cards = env.cards, add = (k, e, t) => cards.push({ keys: k, entry: e, type: t })
   const upd = (i, k, e, t) => { cards[i] = { keys: k, entry: e, type: t } }
   const rem = (i) => cards.splice(i, 1)
@@ -126,6 +126,35 @@ if (require.main === module) {
   for (let i = 0; i < 4; i++) turn(e, 'You wait.', 'Nothing.')
   turn(e, 'You wait.', 'Whitney orders another burger.')
   eq('same food after the cooldown counts again', kcal(e), 950 + 550)
+
+  // ---- step 3: lazy mode (meal 700, snack 300, sweet 400, size words) ----
+  const LZ = 'CFG.LAZY = true'
+  const typed = (txt, cfg) => { const x = fresh(cfg || LZ); turn(x, txt, 'Fine.'); return kcal(x) }
+  eq('lazy: plain "a burger" = 700', typed('Whitney eats a burger.'), 700)
+  eq('lazy: massive double burger = 1,050', typed('Whitney eats a massive double burger.'), 1050)
+  eq('lazy: small scoop of ice cream = 200', typed('Whitney eats a small scoop of ice cream.'), 200)
+  eq('lazy: half a sundae = 200', typed('Whitney eats half a sundae.'), 200)
+  eq('lazy: just a taste of cake = 200', typed('Whitney has just a taste of cake.'), 200)
+  eq('lazy: fries alone = snack 300', typed('Whitney eats some fries.'), 300)
+  eq('lazy: mountain of fries alone = 450', typed('Whitney eats a mountain of fries.'), 450)
+  eq('lazy: two massive burgers capped at x2 = 1,400', typed('Whitney eats two massive burgers.'), 1400)
+  eq('lazy: burger and a sundae = meal + sweet', typed('Whitney eats a burger and a sundae.'), 1100)
+  eq('lazy: :eat 600 stays exact', typed(':eat 600 Whitney'), 600)
+  eq('lazy OFF: massive double burger = step 2 number (550)', typed('Whitney eats a massive double burger.', 'CFG.LAZY = false'), 550)
+  eq('Whitney preset has LAZY on by default', typed('Whitney eats a burger.', '/*LAZY*/'), 700)
+  e = fresh(LZ); const rl = turn(e, 'You look around.', fx('burger_scene'))
+  eq('lazy: burger_scene = 1,050 once, status shows amount', kcal(e) + ' ' + /Whitney ate a double burger and fries \(~1,050 kcal\)\. Type :undo meal/.test(note(rl)), '1050 true')
+  e = fresh(LZ + ";CFG.YOU_NAME = 'Rue'"); turn(e, ':sheet add Rue weight=54', 'ok'); turn(e, 'You look around.', fx('burger_scene'))
+  eq('lazy: burger_scene with Rue: Whitney 1,050, Rue 700', kcal(e) + '/' + e.state.npcs.rue.eaten, '1050/700')
+  e = fresh(LZ)
+  for (const f of ['burger_1_order', 'burger_2_bites', 'burger_3_devour']) turn(e, 'You keep eating.', fx(f))
+  eq('lazy: burger over 3 replies counts once', kcal(e), 1050)
+  e = fresh(LZ); turn(e, 'You look around.', fx('ice_cream_scene'))
+  eq('lazy: ice_cream_scene still counts nothing', kcal(e), 0)
+  e = fresh(LZ); turn(e, 'You look around.', fx('burger_scene')); turn(e, ':undo meal', 'ok')
+  eq('lazy: :undo meal removes the 1,050', kcal(e), 0)
+  e = fresh(LZ); turn(e, 'You look around.', 'Whitney orders a massive double burger.'); retry(e, 'Whitney orders a massive double burger.')
+  eq('lazy: retry of a narrated meal does not double', kcal(e), 1050)
 
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)

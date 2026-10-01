@@ -33,7 +33,10 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     if (!parts.length) return
     narratedEaters(sent).forEach((k) => {
       found[k] = found[k] || {}
-      parts.forEach((p) => { found[k][p.food] = p })
+      parts.forEach((p) => {
+        const old = found[k][p.food]   // the same food in another sentence keeps the bigger size word and quantity
+        found[k][p.food] = old ? Object.assign({}, p, { size: Math.max(old.size || 0, p.size || 0) || null, qty: Math.max(old.qty, p.qty), label: old.label.length >= p.label.length ? old.label : p.label }) : p
+      })
     })
   })
   const out = []
@@ -43,7 +46,7 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     const cool = s.cool || {}
     const fresh = Object.keys(found[k]).filter((f) => cool[f] === undefined || Math.abs(count - cool[f]) > NARRATE_COOLDOWN).map((f) => found[k][f])
     if (!fresh.length) return
-    const kcal = fresh.reduce((t, p) => t + p.kcal, 0)
+    const kcal = mealKcal(fresh)   // one amount for the whole meal (lazy mode: the double burger with a mountain of fries is one 700 x 1.5)
     out.push({ key: k, kcal: Math.round(Math.min(kcal, 5000)), parts: fresh, label: fresh.map((p) => (/s$/.test(p.label) ? p.label : 'a ' + p.label)).join(' and ') })
   })
   return out

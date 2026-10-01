@@ -14,6 +14,7 @@ const CFG = {
   NPC_MAX: 2,            // other tracked characters go into the AI's note only while their name is in the recent story, at most this many
   HIDE_PLAYER: false,   // true = you are not tracked, only the characters below (unnamed commands and tags then go to the first one)
   CHARACTERS: [],       // characters that exist from the first turn: { name, start: { weight: 70, ... }, pattern, look, bonus: { cha: 2 } } (see presets/)
+  LAZY: false,           // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
   YOU_NAME: '',          // who "you" means in the AI's narration when your own sheet is hidden, e.g. 'Rue'. Empty = "you" is not attributed
   AUTO: true,           // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
   STATUS: 'commands',    // add a status line to the reply: 'off' | 'commands' (commands and spotted actions) | 'always'

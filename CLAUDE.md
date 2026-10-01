@@ -94,11 +94,13 @@ Input and Output run every turn, the Author's Note and story card are written, `
 In progress (decided with the user, do in order, test with `node files/bt_test.js` after each, show results before moving on):
 - [x] 1. Shared "already counted this turn" guard (`s.auto[type]` plus dedupe in `applyEvents`).
 - [x] 2. (done, see below) Run the eating/exercise detector on the AI reply in bt_output.js using that guard; status line says what was counted ("Counted: Whitney ate a double burger (~1,050 kcal). Type :undo meal to remove."); add `:undo meal`.
-- [ ] 3. Lazy mode (config switch): meal 700, snack 300, sweet 400; massive/huge/mountain of x1.5, small/little/just a taste x0.5.
+- [x] 3. (done, see below) Lazy mode (config switch): meal 700, snack 300, sweet 400; massive/huge/mountain of x1.5, small/little/just a taste x0.5.
 - [ ] 4. Silly preset: lazy mode + PACE about 6, adjustable with :pace.
 - Later, not started: name every character in the status line, Rue's real starting stats, negatives ("skips dessert", "just a taste"), time-skip day advance, `:quiet on|off`.
 
 Step 2 notes: `src/10b_detect_narrated.js` runs on the AI reply in `bt_output.js` after the tags. It counts only meal starts (arrives, orders, grabs, digs into, eats a ...), ignores continuation and wanting/looking wording, and attributes by name only ("you" needs `CFG.YOU_NAME` with a sheet, or a visible player sheet; she/they counts nothing). All sentences about one meal in a reply are merged and counted once. Cooldown: same character + food word is skipped for 3 actions (`s.cool`, inside the snapshot so retry/undo work). Status line: `Counted: Whitney ate a burger and fries (~950 kcal). Type :undo meal to remove.` `:undo meal` removes `s.lastAuto` once. Exercise narration is NOT detected yet. Size words come in step 3.
+
+Step 3 notes: `CFG.LAZY` (default off, on in `presets/whitney.js`). Typed and narrated meals become flat amounts: meal 700, snack 300, sweet 400 (`LAZY_KCAL`, `LAZY_CLASS` in `src/10_detect_typed.js`; drinks keep their own kcal). Size words within 4 words before the food (`SIZE`: massive/huge/giant/double/mountain x1.5, small/little/tiny/half x0.5, and "just a taste") use the largest word, times a number if given, capped at x2. A snack next to a meal or sweet is part of it (a "mountain of fries" can make the meal big). One merged meal in a reply gets one amount. `:eat n` stays exact. "ice cream" is now one word for matching.
 
 Other:
 1. `:sheet add` options: `muscle=`, `activity=`, and a mana multiplier, so athletes and mana-rich characters can start realistic. (Rue, a runner, was the motivating case.)
