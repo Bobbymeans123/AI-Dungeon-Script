@@ -85,6 +85,14 @@ Input and Output run every turn, the Author's Note and story card are written, `
 
 ## Open work
 
+In progress (decided with the user, do in order, test with `node files/bt_test.js` after each, show results before moving on):
+- [x] 1. Shared "already counted this turn" guard (`s.auto[type]` plus dedupe in `applyEvents`).
+- [ ] 2. Run the eating/exercise detector on the AI reply in bt_output.js using that guard; status line says what was counted ("Counted: Whitney ate a double burger (~1,050 kcal). Type :undo meal to remove."); add `:undo meal`.
+- [ ] 3. Lazy mode (config switch): meal 700, snack 300, sweet 400; massive/huge/mountain of x1.5, small/little/just a taste x0.5.
+- [ ] 4. Silly preset: lazy mode + PACE about 6, adjustable with :pace.
+- Later, not started: name every character in the status line, Rue's real starting stats, negatives ("skips dessert", "just a taste"), time-skip day advance, `:quiet on|off`.
+
+Other:
 1. `:sheet add` options: `muscle=`, `activity=`, and a mana multiplier, so athletes and mana-rich characters can start realistic. (Rue, a runner, was the motivating case.)
 2. Bra size mismatch for hand-entered sheets: bust minus underbust decides the cup, so 82/72 is 70AA, not 70B.
 3. A Context-tab script to strip the bracketed status and inspection lines from the history the AI sees (saves tokens and stops the AI imitating them).

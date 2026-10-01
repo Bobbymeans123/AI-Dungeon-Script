@@ -535,8 +535,17 @@ function applyAll(events, useSkip) {   // sends each event to the right characte
   }
   return notes
 }
+// "already counted this turn" guard: s.auto[type] is set by whatever counts first (typed text, a command, or the AI),
+// and anything later of the same type for that character is dropped. Identical repeats inside one reply count once.
 function applyEvents(s, events, skip) {
   if (skip) events = events.filter((e) => !skip[e.type])
+  const seen = {}
+  events = events.filter((e) => {
+    if (e.type !== 'ate' && e.type !== 'burn') return true
+    const id = e.type + e.n
+    return seen[id] ? false : (seen[id] = true)
+  })
+  if (skip) events.forEach((e) => { if (e.type === 'ate' || e.type === 'burn' || e.type === 'train') s.auto[e.type] = true })
   const order = { stat: 0, curse: 1, lact: 2, ate: 3, burn: 4, train: 5, mana: 6, milk: 7, day: 8 }
   events.sort((a, b) => order[a.type] - order[b.type])
   const notes = []
@@ -629,7 +638,7 @@ function detectAte(text) {
   const qtyBefore = (i) => {   // nearest quantity word in the few words before the food
     for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
       const w = toks[j]
-      if (/^\d+(?:\.\d+)?$/.test(w)) return w
+      if (/^d+(?:.d+)?$/.test(w)) return w
       if (QTY[w] || w === 'half' || w === 'whole' || w === 'entire' || w === 'all') return w
     }
     return null
@@ -641,7 +650,7 @@ function detectAte(text) {
     const q = qtyBefore(i)
     let kcal = f[1]
     if (q) {
-      if (/^\d/.test(q)) kcal = f[1] * parseFloat(q)
+      if (/^d/.test(q)) kcal = f[1] * parseFloat(q)
       else if (QTY[q]) kcal = f[1] * QTY[q]
       else if (q === 'half') kcal = f[2] ? f[2] / 2 : f[1] * 0.5
       else kcal = f[2] ? f[2] : f[1] * 4   // whole / entire / all
