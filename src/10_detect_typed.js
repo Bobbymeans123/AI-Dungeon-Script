@@ -123,7 +123,7 @@ function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mod
   return total
 }
 const LABELS = { dietsoda: 'diet soda', clubsoda: 'club soda', sparklingwater: 'sparkling water', hotdog: 'hot dog', hotdogs: 'hot dogs', corndog: 'corn dog', corndogs: 'corn dogs', porkchop: 'pork chop', porkchops: 'pork chops', lambchop: 'lamb chop', lambchops: 'lamb chops', friedchicken: 'fried chicken', cottoncandy: 'cotton candy', funnelcake: 'funnel cake', caramelapple: 'caramel apple', smores: "s'mores", sweettea: 'sweet tea', energydrink: 'energy drink' }
-const sipLine = (k, labels) => (k ? state.npcs[k].name : 'You') + ' sipped ' + labels.map(withArticle).join(' and ') + ' (0 kcal, very virtuous)'
+const sipLine = (k, labels) => (nameOf(k) || 'You') + ' sipped ' + labels.map(withArticle).join(' and ') + ' (0 kcal, very virtuous)'
 const withArticle = (l) => (/s$|water$|^fudge$|^bbq$/.test(l) ? l : 'a ' + l)
 // ---- drinks: the container sets the amount (real kcal, also in lazy mode) ----
 const DRINK_ROWS = ['milk', 'soda', 'sweettea']   // FOODS rows (first word) that use containers
@@ -215,21 +215,28 @@ function detectSleep(text) {
 function autoDetectAll(text) {
   const res = { notes: [], touched: [] }
   if (!CFG.AUTO) return res
-  const names = namesIn(text)
+  const names = whoIn(text)   // tracked names, and '' when the text says your own name (Rue)
   let keys = state.bt_hideYou ? [] : ['']   // with your sheet hidden, what you do yourself is not tracked
+  const sharing = SHARE_RE.test(text), we = /\b(?:we|us|our)\b/i.test(text)
   if (names.length) {   // "Whitney eats cake" goes to Whitney; "I share a cake with Whitney" goes to both
-    const both = /\b(?:together|both|we|us|share|shares|sharing)\b/i.test(text) || names.some((k) => {
-      const nm = esc(state.npcs[k].name || k)
+    const both = sharing || we || /\bboth\b/i.test(text) || names.some((k) => {
+      const nm = esc(nameOf(k) || k)
       return new RegExp('\\bwith\\s+' + nm + '\\b|\\b' + nm + '\\s+and\\s+(?:i|me|you)\\b|\\b(?:i|me|you)\\s+and\\s+' + nm + '\\b', 'i').test(text)
     })
-    keys = both && !state.bt_hideYou ? [''].concat(names) : names
+    keys = both && !state.bt_hideYou && names.indexOf('') < 0 ? [''].concat(names) : names
+  } else if (we) {   // "we share fries": everyone tracked
+    keys = (state.bt_hideYou ? [] : ['']).concat(npcKeys())
   }
+  const split = lazyOn() && keys.length > 1 && sharing && !/\beach\b/i.test(text) ? keys.length : 1   // lazy mode: sharing one meal means each gets a share, not the whole thing
   const ev = []
   const ate = detectAteInfo(text, false), kcal = ate.kcal, ex = detectExercise(text)
   keys.forEach((k) => {
     const s = sheetOf(k)
     if (!s) return
-    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true; s.lastAuto = { kcal: Math.min(kcal, 5000), label: 'what you typed' } }
+    if (kcal > 0) {
+      const mine = Math.round(kcal / split)
+      ev.push({ type: 'ate', n: mine, who: k }); s.auto.ate = true; s.lastAuto = { kcal: Math.min(mine, 5000), label: (split > 1 ? 'a share of ' : '') + ate.label, at: turnNo() * 10 }
+    }
     if (ex) {
       ev.push({ type: 'burn', n: ex.burn, who: k }); s.auto.burn = true
       ex.regions.forEach((r) => { ev.push({ type: 'train', r: r, n: ex.effort, who: k }); s.auto.train = true })

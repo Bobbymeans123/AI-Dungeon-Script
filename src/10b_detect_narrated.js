@@ -5,16 +5,20 @@
 // about one meal in a reply are merged and counted once, and the same character + food word is not counted again
 // for NARRATE_COOLDOWN actions, so order, arrival, bites and "devours the rest" over several replies are one meal.
 const NARRATE_COOLDOWN = 3
-const START_RE = /\b(?:arrives?|arrived|orders?|ordered|ordering|grabs?|grabbed|digs? into|dug into|tucks? into|starts? (?:on|eating)|begins? (?:to eat|eating)|brings?|serves?|served|sets? down|slides? (?:over|across)|eats?|ate|drinks?|sips?|chugs?|guzzles?|cracks? open|helps? (?:herself|himself|themselves) to|picks? up)\b/i
+const START_RE = /\b(?:arrives?|arrived|orders?|ordered|ordering|grabs?|grabbed|digs? into|dug into|tucks? into|starts? (?:on|eating)|begins? (?:to eat|eating)|brings?|serves?|served|sets? down|slides? (?:over|across)|eats?|ate|shares?|split|splits|drinks?|sips?|chugs?|guzzles?|cracks? open|helps? (?:herself|himself|themselves) to|picks? up)\b/i
 const CONT_RE = /\b(?:another (?:bite|nibble|sip|taste|piece|forkful|spoonful)|takes? (?:a|one|the) (?:bite|nibble|sip|taste)|bites? into|chews?|chewing|savou?rs?|savou?ring|finish(?:es|ed)?|the rest|last (?:bite|piece|crumb)|licks?|swallows?|polish(?:es|ed)? off|wipes?|leftovers?|looks? (?:at|down)|stares?|eyes|smells?|watch(?:es|ed)|admires?|considers?|wants?|wonders?)\b/i
 
 const DISHES = ['burger', 'burgers', 'cheeseburger', 'hamburger', 'sandwich', 'sandwiches', 'pizza', 'pizzas', 'salad', 'pasta', 'cake', 'steak', 'steaks', 'ribeye', 'sirloin', 'ribs', 'porkchop', 'porkchops', 'lambchop', 'lambchops', 'brisket', 'roast', 'meatball', 'meatballs', 'kebab', 'kebabs', 'kabob', 'kebob', 'hotdog', 'hotdogs', 'sausage', 'wings', 'nuggets', 'friedchicken', 'bbq', 'burrito', 'taco', 'tacos']   // when one of these words is in the sentence, its ingredients are not separate foods
 const INGREDIENTS = ['meat', 'cheese', 'bacon', 'ham', 'egg', 'eggs', 'butter', 'bread', 'chicken', 'pork', 'lamb', 'turkey']
 function narratedEaters(sent) {   // keys of the characters this sentence is about; [] means do not guess
-  const names = namesIn(sent)
-  if (names.length > 1) return /\b(?:both|together|and|share|shares)\b/i.test(sent) ? names : []
-  if (names.length === 1) return names
-  if (CFG.YOU_NAME && !state.bt_hideYou && !state.npcs[CFG.YOU_NAME.toLowerCase()] && new RegExp('\\b' + esc(CFG.YOU_NAME) + "(?:'s)?\\b", 'i').test(sent)) return ['']   // the player sheet is named (Rue)
+  const names = whoIn(sent)   // tracked names, and '' when the sentence says the player's name (Rue)
+  const sharing = SHARE_RE.test(sent)
+  if (names.length > 1) return sharing || /\b(?:both|together|and)\b/i.test(sent) ? names : []
+  if (names.length === 1) {   // "Whitney and I share a sundae": you are in it too
+    if (names[0] !== '' && sharing && !state.bt_hideYou && /\b(?:i|me|we|us)\b|\byou\s+and\b|\band\s+you\b|\bwith\s+you\b/i.test(sent)) return ['', names[0]]
+    return names
+  }
+  if (/\b(?:we|us)\b/i.test(sent)) return (state.bt_hideYou ? [] : ['']).concat(npcKeys())   // "we share fries": everyone tracked
   if (/\byou(?:r|rs)?\b/i.test(sent)) {
     const you = CFG.YOU_NAME && state.npcs[CFG.YOU_NAME.toLowerCase()] ? CFG.YOU_NAME.toLowerCase() : ''
     if (you) return [you]
@@ -34,8 +38,11 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     if (parts.some((p) => DISHES.indexOf(p.word) >= 0)) parts = parts.filter((p) => INGREDIENTS.indexOf(p.word) < 0)   // "burger ... slabs of meat" is one dish
     const gags = all.filter((p) => p.gag)   // exact zero-kcal drinks: not counted, but they get a light status line
     if (!parts.length && !gags.length) return
-    narratedEaters(sent).forEach((k) => {
+    const who = narratedEaters(sent)
+    const share = lazyOn() && who.length > 1 && SHARE_RE.test(sent) && !/\beach\b/i.test(sent) ? who.length : 1   // lazy mode: a shared meal is split between them
+    who.forEach((k) => {
       found[k] = found[k] || {}
+      found[k].__share = Math.max(found[k].__share || 1, share)
       gags.forEach((p) => { (found[k].__gag = found[k].__gag || {})[p.food] = p })
       parts.forEach((p) => {
         const old = found[k][p.food]   // the same food in another sentence keeps the bigger size word and quantity
@@ -50,12 +57,14 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     const cool = s.cool || {}
     const gagMap = found[k].__gag || {}
     delete found[k].__gag
+    const share = found[k].__share || 1
+    delete found[k].__share
     const cold = (f) => cool[f] === undefined || Math.abs(count - cool[f]) > NARRATE_COOLDOWN
     const sips = Object.keys(gagMap).filter(cold).map((f) => gagMap[f])
     if (sips.length) out.push({ key: k, kcal: 0, parts: sips, label: sips.map((p) => withArticle(p.label)).join(' and '), gag: true })
     const fresh = Object.keys(found[k]).filter(cold).map((f) => found[k][f])
     if (!fresh.length) return
-    const kcal = mealKcal(fresh)   // one amount for the whole meal (lazy mode: the double burger with a mountain of fries is one 700 x 1.5)
+    const kcal = mealKcal(fresh) / share   // one amount for the whole meal (lazy mode: the double burger with a mountain of fries is one 700 x 1.5)
     out.push({ key: k, kcal: Math.round(Math.min(kcal, 5000)), parts: fresh, label: fresh.map((p) => withArticle(p.label)).join(' and ') })
   })
   return out
@@ -76,9 +85,9 @@ function countNarrated(text) {   // adds the meals found in the AI's reply and r
     s.auto.ate = true
     s.cool = s.cool || {}
     o.parts.forEach((p) => { s.cool[p.food] = count })
-    s.lastAuto = { kcal: o.kcal, label: o.label }
+    s.lastAuto = { kcal: o.kcal, label: o.label, at: turnNo() * 10 + 1 }   // at orders meals: typed text (Input) before the AI's reply (Output) of the same turn
     state.bt_touched = (state.bt_touched || []).concat([o.key])
-    notes.push('Counted: ' + (o.key ? state.npcs[o.key].name : 'You') + ' ate ' + o.label + ' (~' + fmt(o.kcal) + ' kcal). Type :undo meal to remove.')
+    notes.push('Counted: ' + (nameOf(o.key) || 'You') + ' ate ' + o.label + ' (~' + fmt(o.kcal) + ' kcal). Type :undo meal to remove.')
   })
   if (notes.length) state.bt_flag = true
   return notes

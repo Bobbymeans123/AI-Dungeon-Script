@@ -156,6 +156,18 @@ function namesIn(text) {   // keys of tracked characters mentioned in the text
   return out
 }
 const sheetOf = (key) => (key ? state.npcs[key] : state.bt)
+const nameOf = (key) => (sheetOf(key) && sheetOf(key).name) || ''   // '' for an unnamed player sheet
+const playerName = () => {   // your own sheet's name (Rue), unless a named NPC already has it
+  const n = (state.bt && state.bt.name) || CFG.YOU_NAME || ''
+  return n && !(state.npcs || {})[n.toLowerCase()] ? n : ''
+}
+function whoIn(text) {   // like namesIn, plus '' (your sheet) when the text names the player ("Rue")
+  const out = namesIn(text), pn = playerName()
+  if (pn && !state.bt_hideYou && new RegExp('\\b' + esc(pn) + "(?:'s)?\\b", 'i').test(text)) out.push('')
+  return out
+}
+const SHARE_RE = /\b(?:share|shares|sharing|shared|split|splits|splitting|together|halves)\b/i
+const turnNo = () => (typeof info !== 'undefined' && info && typeof info.actionCount === 'number' && info.actionCount > 0 ? info.actionCount : (typeof history !== 'undefined' && history ? history.length : 0))
 const defKey = () => (state.bt_hideYou && npcKeys().length ? npcKeys()[0] : '')   // who unnamed commands and tags mean
 const labelOf = (key) => (key ? state.npcs[key].name + ': ' : '')
 function recentText(text) {
@@ -706,7 +718,7 @@ function mealKcal(parts) {   // total kcal for the foods of one meal. Normal mod
   return total
 }
 const LABELS = { dietsoda: 'diet soda', clubsoda: 'club soda', sparklingwater: 'sparkling water', hotdog: 'hot dog', hotdogs: 'hot dogs', corndog: 'corn dog', corndogs: 'corn dogs', porkchop: 'pork chop', porkchops: 'pork chops', lambchop: 'lamb chop', lambchops: 'lamb chops', friedchicken: 'fried chicken', cottoncandy: 'cotton candy', funnelcake: 'funnel cake', caramelapple: 'caramel apple', smores: "s'mores", sweettea: 'sweet tea', energydrink: 'energy drink' }
-const sipLine = (k, labels) => (k ? state.npcs[k].name : 'You') + ' sipped ' + labels.map(withArticle).join(' and ') + ' (0 kcal, very virtuous)'
+const sipLine = (k, labels) => (nameOf(k) || 'You') + ' sipped ' + labels.map(withArticle).join(' and ') + ' (0 kcal, very virtuous)'
 const withArticle = (l) => (/s$|water$|^fudge$|^bbq$/.test(l) ? l : 'a ' + l)
 // ---- drinks: the container sets the amount (real kcal, also in lazy mode) ----
 const DRINK_ROWS = ['milk', 'soda', 'sweettea']   // FOODS rows (first word) that use containers
@@ -798,21 +810,28 @@ function detectSleep(text) {
 function autoDetectAll(text) {
   const res = { notes: [], touched: [] }
   if (!CFG.AUTO) return res
-  const names = namesIn(text)
+  const names = whoIn(text)   // tracked names, and '' when the text says your own name (Rue)
   let keys = state.bt_hideYou ? [] : ['']   // with your sheet hidden, what you do yourself is not tracked
+  const sharing = SHARE_RE.test(text), we = /\b(?:we|us|our)\b/i.test(text)
   if (names.length) {   // "Whitney eats cake" goes to Whitney; "I share a cake with Whitney" goes to both
-    const both = /\b(?:together|both|we|us|share|shares|sharing)\b/i.test(text) || names.some((k) => {
-      const nm = esc(state.npcs[k].name || k)
+    const both = sharing || we || /\bboth\b/i.test(text) || names.some((k) => {
+      const nm = esc(nameOf(k) || k)
       return new RegExp('\\bwith\\s+' + nm + '\\b|\\b' + nm + '\\s+and\\s+(?:i|me|you)\\b|\\b(?:i|me|you)\\s+and\\s+' + nm + '\\b', 'i').test(text)
     })
-    keys = both && !state.bt_hideYou ? [''].concat(names) : names
+    keys = both && !state.bt_hideYou && names.indexOf('') < 0 ? [''].concat(names) : names
+  } else if (we) {   // "we share fries": everyone tracked
+    keys = (state.bt_hideYou ? [] : ['']).concat(npcKeys())
   }
+  const split = lazyOn() && keys.length > 1 && sharing && !/\beach\b/i.test(text) ? keys.length : 1   // lazy mode: sharing one meal means each gets a share, not the whole thing
   const ev = []
   const ate = detectAteInfo(text, false), kcal = ate.kcal, ex = detectExercise(text)
   keys.forEach((k) => {
     const s = sheetOf(k)
     if (!s) return
-    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true; s.lastAuto = { kcal: Math.min(kcal, 5000), label: 'what you typed' } }
+    if (kcal > 0) {
+      const mine = Math.round(kcal / split)
+      ev.push({ type: 'ate', n: mine, who: k }); s.auto.ate = true; s.lastAuto = { kcal: Math.min(mine, 5000), label: (split > 1 ? 'a share of ' : '') + ate.label, at: turnNo() * 10 }
+    }
     if (ex) {
       ev.push({ type: 'burn', n: ex.burn, who: k }); s.auto.burn = true
       ex.regions.forEach((r) => { ev.push({ type: 'train', r: r, n: ex.effort, who: k }); s.auto.train = true })
@@ -841,16 +860,20 @@ function autoDetectAll(text) {
 // about one meal in a reply are merged and counted once, and the same character + food word is not counted again
 // for NARRATE_COOLDOWN actions, so order, arrival, bites and "devours the rest" over several replies are one meal.
 const NARRATE_COOLDOWN = 3
-const START_RE = /\b(?:arrives?|arrived|orders?|ordered|ordering|grabs?|grabbed|digs? into|dug into|tucks? into|starts? (?:on|eating)|begins? (?:to eat|eating)|brings?|serves?|served|sets? down|slides? (?:over|across)|eats?|ate|drinks?|sips?|chugs?|guzzles?|cracks? open|helps? (?:herself|himself|themselves) to|picks? up)\b/i
+const START_RE = /\b(?:arrives?|arrived|orders?|ordered|ordering|grabs?|grabbed|digs? into|dug into|tucks? into|starts? (?:on|eating)|begins? (?:to eat|eating)|brings?|serves?|served|sets? down|slides? (?:over|across)|eats?|ate|shares?|split|splits|drinks?|sips?|chugs?|guzzles?|cracks? open|helps? (?:herself|himself|themselves) to|picks? up)\b/i
 const CONT_RE = /\b(?:another (?:bite|nibble|sip|taste|piece|forkful|spoonful)|takes? (?:a|one|the) (?:bite|nibble|sip|taste)|bites? into|chews?|chewing|savou?rs?|savou?ring|finish(?:es|ed)?|the rest|last (?:bite|piece|crumb)|licks?|swallows?|polish(?:es|ed)? off|wipes?|leftovers?|looks? (?:at|down)|stares?|eyes|smells?|watch(?:es|ed)|admires?|considers?|wants?|wonders?)\b/i
 
 const DISHES = ['burger', 'burgers', 'cheeseburger', 'hamburger', 'sandwich', 'sandwiches', 'pizza', 'pizzas', 'salad', 'pasta', 'cake', 'steak', 'steaks', 'ribeye', 'sirloin', 'ribs', 'porkchop', 'porkchops', 'lambchop', 'lambchops', 'brisket', 'roast', 'meatball', 'meatballs', 'kebab', 'kebabs', 'kabob', 'kebob', 'hotdog', 'hotdogs', 'sausage', 'wings', 'nuggets', 'friedchicken', 'bbq', 'burrito', 'taco', 'tacos']   // when one of these words is in the sentence, its ingredients are not separate foods
 const INGREDIENTS = ['meat', 'cheese', 'bacon', 'ham', 'egg', 'eggs', 'butter', 'bread', 'chicken', 'pork', 'lamb', 'turkey']
 function narratedEaters(sent) {   // keys of the characters this sentence is about; [] means do not guess
-  const names = namesIn(sent)
-  if (names.length > 1) return /\b(?:both|together|and|share|shares)\b/i.test(sent) ? names : []
-  if (names.length === 1) return names
-  if (CFG.YOU_NAME && !state.bt_hideYou && !state.npcs[CFG.YOU_NAME.toLowerCase()] && new RegExp('\\b' + esc(CFG.YOU_NAME) + "(?:'s)?\\b", 'i').test(sent)) return ['']   // the player sheet is named (Rue)
+  const names = whoIn(sent)   // tracked names, and '' when the sentence says the player's name (Rue)
+  const sharing = SHARE_RE.test(sent)
+  if (names.length > 1) return sharing || /\b(?:both|together|and)\b/i.test(sent) ? names : []
+  if (names.length === 1) {   // "Whitney and I share a sundae": you are in it too
+    if (names[0] !== '' && sharing && !state.bt_hideYou && /\b(?:i|me|we|us)\b|\byou\s+and\b|\band\s+you\b|\bwith\s+you\b/i.test(sent)) return ['', names[0]]
+    return names
+  }
+  if (/\b(?:we|us)\b/i.test(sent)) return (state.bt_hideYou ? [] : ['']).concat(npcKeys())   // "we share fries": everyone tracked
   if (/\byou(?:r|rs)?\b/i.test(sent)) {
     const you = CFG.YOU_NAME && state.npcs[CFG.YOU_NAME.toLowerCase()] ? CFG.YOU_NAME.toLowerCase() : ''
     if (you) return [you]
@@ -870,8 +893,11 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     if (parts.some((p) => DISHES.indexOf(p.word) >= 0)) parts = parts.filter((p) => INGREDIENTS.indexOf(p.word) < 0)   // "burger ... slabs of meat" is one dish
     const gags = all.filter((p) => p.gag)   // exact zero-kcal drinks: not counted, but they get a light status line
     if (!parts.length && !gags.length) return
-    narratedEaters(sent).forEach((k) => {
+    const who = narratedEaters(sent)
+    const share = lazyOn() && who.length > 1 && SHARE_RE.test(sent) && !/\beach\b/i.test(sent) ? who.length : 1   // lazy mode: a shared meal is split between them
+    who.forEach((k) => {
       found[k] = found[k] || {}
+      found[k].__share = Math.max(found[k].__share || 1, share)
       gags.forEach((p) => { (found[k].__gag = found[k].__gag || {})[p.food] = p })
       parts.forEach((p) => {
         const old = found[k][p.food]   // the same food in another sentence keeps the bigger size word and quantity
@@ -886,12 +912,14 @@ function narratedMeals(text, count) {   // returns [{ key, kcal, parts, label }]
     const cool = s.cool || {}
     const gagMap = found[k].__gag || {}
     delete found[k].__gag
+    const share = found[k].__share || 1
+    delete found[k].__share
     const cold = (f) => cool[f] === undefined || Math.abs(count - cool[f]) > NARRATE_COOLDOWN
     const sips = Object.keys(gagMap).filter(cold).map((f) => gagMap[f])
     if (sips.length) out.push({ key: k, kcal: 0, parts: sips, label: sips.map((p) => withArticle(p.label)).join(' and '), gag: true })
     const fresh = Object.keys(found[k]).filter(cold).map((f) => found[k][f])
     if (!fresh.length) return
-    const kcal = mealKcal(fresh)   // one amount for the whole meal (lazy mode: the double burger with a mountain of fries is one 700 x 1.5)
+    const kcal = mealKcal(fresh) / share   // one amount for the whole meal (lazy mode: the double burger with a mountain of fries is one 700 x 1.5)
     out.push({ key: k, kcal: Math.round(Math.min(kcal, 5000)), parts: fresh, label: fresh.map((p) => withArticle(p.label)).join(' and ') })
   })
   return out
@@ -912,9 +940,9 @@ function countNarrated(text) {   // adds the meals found in the AI's reply and r
     s.auto.ate = true
     s.cool = s.cool || {}
     o.parts.forEach((p) => { s.cool[p.food] = count })
-    s.lastAuto = { kcal: o.kcal, label: o.label }
+    s.lastAuto = { kcal: o.kcal, label: o.label, at: turnNo() * 10 + 1 }   // at orders meals: typed text (Input) before the AI's reply (Output) of the same turn
     state.bt_touched = (state.bt_touched || []).concat([o.key])
-    notes.push('Counted: ' + (o.key ? state.npcs[o.key].name : 'You') + ' ate ' + o.label + ' (~' + fmt(o.kcal) + ' kcal). Type :undo meal to remove.')
+    notes.push('Counted: ' + (nameOf(o.key) || 'You') + ' ate ' + o.label + ' (~' + fmt(o.kcal) + ' kcal). Type :undo meal to remove.')
   })
   if (notes.length) state.bt_flag = true
   return notes
@@ -949,11 +977,11 @@ const CMD_RE = [
 function parseCommand(text) {
   for (let i = 0; i < CMD_RE.length; i++) {
     const m = text.match(CMD_RE[i][1])
-    if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : namesIn(text) }
+    if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : whoIn(text) }
   }
   return null
 }
-const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal [Name], :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
 function runCommand(cmd) {
   const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
   const s = sheetOf(key), m = cmd.m
@@ -973,9 +1001,24 @@ function runCommand(cmd) {
       break
     }
     case 'undomeal': {   // takes back the last meal the tracker counted by itself (once per meal)
-      if (s.lastAuto) { s.eaten = Math.max(0, (s.eaten || 0) - s.lastAuto.kcal); note = 'Removed ' + s.lastAuto.label + ' (' + fmt(s.lastAuto.kcal) + ' kcal)'; s.lastAuto = null }
-      else note = 'No auto-counted meal to remove'
-      line = '\n> You think back over what you ate.\n'
+      let keys
+      if (cmd.who && cmd.who.length) keys = cmd.who   // ":undo meal Whitney" / ":undo meal Rue": only that person
+      else {   // no name: the most recent auto-counted meal (a shared meal is taken back from everyone in it)
+        const have = [''].concat(npcKeys()).filter((k) => sheetOf(k) && sheetOf(k).lastAuto)
+        const top = Math.max.apply(null, have.map((k) => sheetOf(k).lastAuto.at || 0))
+        keys = have.filter((k) => (sheetOf(k).lastAuto.at || 0) === top)
+      }
+      const done = []
+      keys.forEach((k) => {
+        const x = sheetOf(k)
+        if (!x || !x.lastAuto) return
+        x.eaten = Math.max(0, (x.eaten || 0) - x.lastAuto.kcal)
+        done.push((nameOf(k) || 'You') + ': ' + x.lastAuto.label + ' (' + fmt(x.lastAuto.kcal) + ' kcal)')
+        x.lastAuto = null
+      })
+      note = done.length ? 'Removed ' + done.join(' | ') : 'No auto-counted meal to remove'
+      state.bt_touched = keys.length ? keys : [key]
+      line ='\n> You think back over what you ate.\n'
       break
     }
     case 'burn': {
@@ -1064,7 +1107,7 @@ function runCommand(cmd) {
   }
   const HANDLED = { eat: 'ate', burn: 'burn', train: 'train', day: 'day', milk: 'milk', mana: 'mana', lactate: 'lact', curse: 'curse' }
   if (HANDLED[cmd.name] && s && s.auto) s.auto[HANDLED[cmd.name]] = true   // so the AI's own tag for it is not counted twice
-  return { line: line, note: (key && note && cmd.name.indexOf('sheet') !== 0 ? labelOf(key) : '') + note, matched: m[0] }
+  return { line: line, note: (key && note && cmd.name.indexOf('sheet') !== 0 && cmd.name !== 'undomeal' ? labelOf(key) : '') + note, matched: m[0] }
 }
 
 // ---------- text for the AI, the card and the status line ----------
@@ -1254,7 +1297,7 @@ function statusLine(notes) {
   let touched = (state.bt_touched && state.bt_touched.length) ? state.bt_touched : [defKey()]
   touched = touched.filter((k, i) => touched.indexOf(k) === i && sheetOf(k))
   if (!touched.length) touched = [defKey()]
-  const lines = touched.map((k) => '[' + sheetLine(sheetOf(k), k ? state.npcs[k].name : ''))
+  const lines = touched.map((k) => '[' + sheetLine(sheetOf(k), nameOf(k)))
   let first = lines[0]
   if (state.bt_note) first += ' | ' + state.bt_note
   if (notes && notes.length) first += ' | ' + notes.join(', ')

@@ -10,6 +10,18 @@ function namesIn(text) {   // keys of tracked characters mentioned in the text
   return out
 }
 const sheetOf = (key) => (key ? state.npcs[key] : state.bt)
+const nameOf = (key) => (sheetOf(key) && sheetOf(key).name) || ''   // '' for an unnamed player sheet
+const playerName = () => {   // your own sheet's name (Rue), unless a named NPC already has it
+  const n = (state.bt && state.bt.name) || CFG.YOU_NAME || ''
+  return n && !(state.npcs || {})[n.toLowerCase()] ? n : ''
+}
+function whoIn(text) {   // like namesIn, plus '' (your sheet) when the text names the player ("Rue")
+  const out = namesIn(text), pn = playerName()
+  if (pn && !state.bt_hideYou && new RegExp('\\b' + esc(pn) + "(?:'s)?\\b", 'i').test(text)) out.push('')
+  return out
+}
+const SHARE_RE = /\b(?:share|shares|sharing|shared|split|splits|splitting|together|halves)\b/i
+const turnNo = () => (typeof info !== 'undefined' && info && typeof info.actionCount === 'number' && info.actionCount > 0 ? info.actionCount : (typeof history !== 'undefined' && history ? history.length : 0))
 const defKey = () => (state.bt_hideYou && npcKeys().length ? npcKeys()[0] : '')   // who unnamed commands and tags mean
 const labelOf = (key) => (key ? state.npcs[key].name + ': ' : '')
 function recentText(text) {

@@ -27,11 +27,11 @@ const CMD_RE = [
 function parseCommand(text) {
   for (let i = 0; i < CMD_RE.length; i++) {
     const m = text.match(CMD_RE[i][1])
-    if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : namesIn(text) }
+    if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : whoIn(text) }
   }
   return null
 }
-const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal [Name], :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
 function runCommand(cmd) {
   const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
   const s = sheetOf(key), m = cmd.m
@@ -51,9 +51,24 @@ function runCommand(cmd) {
       break
     }
     case 'undomeal': {   // takes back the last meal the tracker counted by itself (once per meal)
-      if (s.lastAuto) { s.eaten = Math.max(0, (s.eaten || 0) - s.lastAuto.kcal); note = 'Removed ' + s.lastAuto.label + ' (' + fmt(s.lastAuto.kcal) + ' kcal)'; s.lastAuto = null }
-      else note = 'No auto-counted meal to remove'
-      line = '\n> You think back over what you ate.\n'
+      let keys
+      if (cmd.who && cmd.who.length) keys = cmd.who   // ":undo meal Whitney" / ":undo meal Rue": only that person
+      else {   // no name: the most recent auto-counted meal (a shared meal is taken back from everyone in it)
+        const have = [''].concat(npcKeys()).filter((k) => sheetOf(k) && sheetOf(k).lastAuto)
+        const top = Math.max.apply(null, have.map((k) => sheetOf(k).lastAuto.at || 0))
+        keys = have.filter((k) => (sheetOf(k).lastAuto.at || 0) === top)
+      }
+      const done = []
+      keys.forEach((k) => {
+        const x = sheetOf(k)
+        if (!x || !x.lastAuto) return
+        x.eaten = Math.max(0, (x.eaten || 0) - x.lastAuto.kcal)
+        done.push((nameOf(k) || 'You') + ': ' + x.lastAuto.label + ' (' + fmt(x.lastAuto.kcal) + ' kcal)')
+        x.lastAuto = null
+      })
+      note = done.length ? 'Removed ' + done.join(' | ') : 'No auto-counted meal to remove'
+      state.bt_touched = keys.length ? keys : [key]
+      line ='\n> You think back over what you ate.\n'
       break
     }
     case 'burn': {
@@ -142,6 +157,6 @@ function runCommand(cmd) {
   }
   const HANDLED = { eat: 'ate', burn: 'burn', train: 'train', day: 'day', milk: 'milk', mana: 'mana', lactate: 'lact', curse: 'curse' }
   if (HANDLED[cmd.name] && s && s.auto) s.auto[HANDLED[cmd.name]] = true   // so the AI's own tag for it is not counted twice
-  return { line: line, note: (key && note && cmd.name.indexOf('sheet') !== 0 ? labelOf(key) : '') + note, matched: m[0] }
+  return { line: line, note: (key && note && cmd.name.indexOf('sheet') !== 0 && cmd.name !== 'undomeal' ? labelOf(key) : '') + note, matched: m[0] }
 }
 

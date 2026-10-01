@@ -121,7 +121,7 @@ function statusLine(notes) {
   let touched = (state.bt_touched && state.bt_touched.length) ? state.bt_touched : [defKey()]
   touched = touched.filter((k, i) => touched.indexOf(k) === i && sheetOf(k))
   if (!touched.length) touched = [defKey()]
-  const lines = touched.map((k) => '[' + sheetLine(sheetOf(k), k ? state.npcs[k].name : ''))
+  const lines = touched.map((k) => '[' + sheetLine(sheetOf(k), nameOf(k)))
   let first = lines[0]
   if (state.bt_note) first += ' | ' + state.bt_note
   if (notes && notes.length) first += ' | ' + notes.join(', ')

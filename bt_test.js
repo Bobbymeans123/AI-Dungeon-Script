@@ -254,6 +254,51 @@ if (require.main === module) {
   e = fresh('/*PRESET*/'); turn(e, 'You eat a burger.', 'Fine.')
   eq('preset: unnamed typed meal goes to Rue', e.state.bt.eaten + '/' + (e.state.npcs.whitney.eaten || 0), '700/0')
 
+  // ---- step 4b: named status lines, sharing, :undo meal by name (the real preset: Rue is you, Whitney is a character) ----
+  const P = '/*PRESET*/'
+  const both2 = (x) => (x.state.bt.eaten || 0) + '/' + (x.state.npcs.whitney.eaten || 0)   // Rue/Whitney
+  const lines = (r) => r.out.split('\n').filter((l) => l.charAt(0) === '[')
+  e = fresh(P)
+  eq('status line names Rue ("[Rue |") for an unnamed :body', /^\[Rue \| Day/.test(lines(turn(e, ':body', 'ok'))[0]), true)
+  eq('status line names Whitney ("[Whitney |")', /^\[Whitney \| Day/.test(lines(turn(e, ':body Whitney', 'ok'))[0]), true)
+  eq('status line names Rue when she is named', /^\[Rue \| Day/.test(lines(turn(e, ':body Rue', 'ok'))[0]), true)
+  eq('a meal by both: two named lines', lines(turn(e, 'Rue and Whitney share cake.', 'ok')).map((l) => l.split(' |')[0]).sort().join(','), '[Rue,[Whitney')
+  eq('label stays short (name + one bar only)', lines(turn(fresh(P), ':body', 'ok'))[0].length - lines(turn(fresh('CFG.HIDE_PLAYER = false;CFG.PLAYER = null;CFG.YOU_NAME = ""'), ':body', 'ok'))[0].length < 12, true)
+  // sharing: typed and narrated, each gets a share, not the whole meal twice
+  ;[['Rue and Whitney share cake.', '200/200'], ['Whitney and Rue split a sundae.', '200/200'], ['We share fries.', '150/150'], ['Whitney and I share a sundae.', '200/200'], ['Whitney and Rue each eat a burger.', '700/700']].forEach(([txt, want]) => {
+    e = fresh(P); turn(e, txt, 'Fine.')
+    eq('share typed "' + txt + '" (Rue/Whitney)', both2(e), want)
+    e = fresh(P); turn(e, 'You look around.', txt)
+    eq('share narrated "' + txt + '"', both2(e), want)
+  })
+  e = fresh(P); turn(e, 'Rue eats a burger.', 'Fine.')
+  eq("Rue's own name targets her sheet (Rue 700, Whitney 0)", both2(e), '700/0')
+  e = fresh(P); turn(e, ':eat 500 Rue', 'Fine.')
+  eq(':eat 500 Rue goes to Rue', both2(e), '500/0')
+  e = fresh(P); turn(e, 'You look around.', 'Rue orders a burger.')
+  eq('narrated "Rue orders a burger" goes to Rue', both2(e), '700/0')
+  eq('normal mode (not lazy): sharing still gives each the full amount', (() => { const x = fresh(P + ';CFG.SILLY = false'); turn(x, 'Rue and Whitney share cake.', 'ok'); return both2(x) })(), '600/600')
+  // :undo meal by name
+  e = fresh(P); turn(e, 'Rue eats a burger.', 'ok'); turn(e, 'Whitney eats a pizza.', 'ok')
+  turn(e, ':undo meal Rue', 'ok'); const u1 = both2(e)
+  turn(e, ':undo meal Rue', 'ok'); const u2 = both2(e)
+  turn(e, ':undo meal Whitney', 'ok')
+  eq(':undo meal Rue removes only Rue; again does nothing; then Whitney', u1 + ' ' + u2 + ' ' + both2(e), '0/700 0/700 0/0')
+  e = fresh(P); turn(e, 'Whitney eats a pizza.', 'ok'); turn(e, 'Rue eats a burger.', 'ok')
+  turn(e, ':undo meal Whitney', 'ok')
+  eq(':undo meal Whitney removes only Whitney (Rue was more recent)', both2(e), '700/0')
+  e = fresh(P); turn(e, 'Whitney eats a pizza.', 'ok'); turn(e, 'Rue eats a burger.', 'ok')
+  turn(e, ':undo meal', 'ok'); const n1 = both2(e)
+  turn(e, ':undo meal', 'ok'); const n2 = both2(e)
+  turn(e, ':undo meal', 'ok')
+  eq(':undo meal with no name: most recent first (Rue), then Whitney, then nothing', n1 + ' ' + n2 + ' ' + both2(e), '0/700 0/0 0/0')
+  e = fresh(P); turn(e, 'You look around.', 'Whitney orders a burger.'); turn(e, 'You look around.', 'Rue orders a pizza.'); turn(e, ':undo meal Whitney', 'ok')
+  eq('undo by name works on narrated meals too', both2(e), '700/0')
+  e = fresh(P); turn(e, 'Rue and Whitney share cake.', 'ok'); turn(e, ':undo meal', 'ok')
+  eq(':undo meal with no name takes a shared meal back from both', both2(e), '0/0')
+  e = fresh(P); turn(e, 'Rue and Whitney share cake.', 'ok'); turn(e, ':undo meal Whitney', 'ok')
+  eq(':undo meal Whitney leaves Rue her share', both2(e), '200/0')
+
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
 }
