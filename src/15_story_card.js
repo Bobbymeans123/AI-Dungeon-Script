@@ -57,7 +57,9 @@ function applyPlayerCard() {
   const s = state.bt
   if (s.cardApplied === entry) return   // unchanged since last time: do not apply again (later :set changes stay)
   const r = parseSheetOpts(entry, true)
-  const did = Object.keys(r.st).concat(Object.keys(r.o))
+  if (r.o.name && s.cardApplied === undefined && s.name) delete r.o.name   // the first time: a name already on the sheet (from the answers) wins over the card
+  if (r.o.name && state.npcs[r.o.name.toLowerCase()]) { r.bad.push('name=' + r.o.name); delete r.o.name }   // never a tracked character such as Whitney
+  const did =Object.keys(r.st).concat(Object.keys(r.o))
   if (did.length) {
     if (playerPristine(s)) {   // rebuild exactly like :sheet add would
       const n = newBT(Object.assign({}, s.start, r.st), { name: r.o.name || s.name, pattern: r.o.pattern || s.pattern, look: r.o.look || s.look, muscle: s.muscleMul, activity: s.activity })

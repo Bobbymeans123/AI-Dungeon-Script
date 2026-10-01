@@ -17,7 +17,7 @@ function phAnswers() {   // the answers by field, or null when there are no plac
     if (!p || p.question === undefined || p.answer === undefined || p.answer === null) return
     const q = String(p.question).toLowerCase().replace(/\s+/g, ' ').trim(), a = String(p.answer).replace(/\s+/g, ' ').trim()
     if (!a) return
-    const f = /^(?:character\.)?name\b/.test(q) ? 'name' : /^(?:character\.)?gender\b/.test(q) ? 'gender' : /^height/.test(q) ? 'height' : /^weight/.test(q) ? 'weight'
+    const f = /^(?:character\.)?name\b/.test(q) ? 'name' : /^your name\b/.test(q) ? 'yourname' : /^(?:character\.)?gender\b/.test(q) ? 'gender' : /^height/.test(q) ? 'height' : /^weight/.test(q) ? 'weight'
       : /^build/.test(q) ? 'build' : /^activity/.test(q) ? 'activity' : /^chest/.test(q) ? 'chest' : ''
     if (f && out[f] === undefined) out[f] = a
   })
@@ -52,14 +52,33 @@ function phPick(answer, keys) {   // which of the words the answer says (typos a
   })
   return best
 }
+// The player's name: the first usable one of (1) the placeholder "character.name", (2) the placeholder "Your name?", (3) the name=
+// field of the Player setup card. Each is cleaned to one word; an empty or unusable one (or a tracked character such as Whitney)
+// is skipped and the next source is tried. info.* is deliberately not used (the probe showed info.characters is [""]).
+const phOneWord = (x) => (x === undefined || x === null ? '' : (String(x).match(/[A-Za-z][\w-]*/) || [''])[0])
+const phNameOk = (nm) => !!nm && !state.npcs[nm.toLowerCase()]
+function phPlayerName(a) {
+  const fromPlaceholder = phOneWord(a.name)
+  if (phNameOk(fromPlaceholder)) return fromPlaceholder
+  const fromAsk = phOneWord(a.yourname)
+  if (phNameOk(fromAsk)) return fromAsk
+  if (state.bt.cardApplied !== undefined) return ''   // the card has been applied already: later edits go through the card itself, not through seeding
+  const cards = typeof storyCards !== 'undefined' && storyCards ? storyCards : []
+  for (let i = 0; i < cards.length; i++) {
+    if (cards[i].type === SETUP_TYPE && cards[i].keys === SETUP_KEYS) {
+      const fromCard = parseSheetOpts(String(cards[i].entry || ''), true).o.name
+      return phNameOk(fromCard) ? fromCard : ''
+    }
+  }
+  return ''
+}
 function seedFromPlaceholders() {
   const s = state.bt
   if (!CFG.PLACEHOLDERS || state.bt_hideYou || !s || s.seeded) return
-  const a = phAnswers()
-  if (!a) return
+  const a = phAnswers() || {}   // no placeholders is fine: the name can still come from info or the Player setup card
   const st = {}, o = {}, said = []
-  const nm = a.name !== undefined ? (a.name.match(/[A-Za-z][\w-]*/) || [''])[0] : ''   // one word, and not a character that already exists
-  if (nm && !state.npcs[nm.toLowerCase()]) o.name = nm
+  const nm = s.name ? '' : phPlayerName(a)   // a name already on the sheet is kept
+  if (nm) o.name = nm
   const gender = a.gender !== undefined ? a.gender.slice(0, 20) : ''
   const h = a.height !== undefined ? phHeight(a.height) : null
   if (h) { st.height = h; said.push(h + ' cm') }

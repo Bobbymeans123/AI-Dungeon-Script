@@ -12,7 +12,7 @@ function run(kind, text, env) {
   const upd = (i, k, e, t) => { cards[i] = { keys: k, entry: e, type: t } }
   const rem = (i) => cards.splice(i, 1)
   return new Function('text', 'state', 'info', 'history', 'storyCards', 'addStoryCard', 'updateStoryCard', 'removeStoryCard', 'log', src)(
-    text, env.state, { actionCount: env.count }, env.history.slice(), cards, add, upd, rem, () => {}).text
+    text, env.state, Object.assign({ actionCount: env.count }, env.info || {}), env.history.slice(), cards, add, upd, rem, () => {}).text
 }
 const mk = (cfg, build) => ({ state: {}, history: [], cards: [], count: 0, cfg: cfg || '', build: build || '' })
 const fx = (n) => fs.readFileSync(__dirname + '/tests/fixtures/' + n + '.txt', 'utf8').trim()
@@ -504,6 +504,59 @@ if (require.main === module) {
   eq(':probe card says "none" without placeholders', /--- state\.placeholders \(full\) ---\nnone/.test((probes(e)[0] || {}).entry || ''), true)
   e = fresh(); turn(e, ':sheet add Bo muscle=1.2 activity=1.5', 'ok'); turn(e, ':sheet add Cy muscle=3 activity=9', 'ok'); turn(e, ':sheet add Di', 'ok')
   eq(':sheet add options: muscle= and activity= work, out-of-range ignored, plain :sheet add unchanged', [e.state.npcs.bo.muscleMul, e.state.npcs.bo.activity, e.state.npcs.cy.muscleMul, e.state.npcs.cy.activity, e.state.npcs.di.muscleMul, e.state.npcs.di.activity].map(String).join(' '), '1.2 1.5 1 undefined 1 undefined')
+
+  // ---- player name lookup: (1) character.name, (2) "Your name?", (3) name= on the Player setup card ----
+  const PHN = (a) => a.map(([q, v]) => ({ question: q, answer: v }))
+  const CN = 'character.name', YN = 'Your name?'
+  const mkName = (ph, cardName, build, info) => {   // a new adventure: placeholders, and optionally a Player setup card that already exists on turn 1
+    const x = mk('/*PRESET*/', build === undefined ? 'custom' : build)
+    if (ph !== undefined) x.state.placeholders = PHN(ph)
+    if (info) x.info = info
+    if (cardName !== undefined) x.cards.push({ keys: 'playersetup', entry: 'name=' + cardName + ' height= weight= bodyfat= underbust= bust= waist= hips= pattern=even look=athletic gland= potential=', type: 'Player setup' })
+    x.firstOut = turn(x, 'You look around.', 'The room is quiet.').out
+    return x
+  }
+  const nameOf1 = (x) => x.state.bt.name
+  eq('name sources alone: character.name | "Your name?" | card name=', [mkName([[CN, 'Zed']]), mkName([[YN, 'Kay']]), mkName(undefined, 'Mo')].map(nameOf1).join(' '), 'Zed Kay Mo')
+  e = mkName(undefined); e.cards.find((c) => c.type === 'Player setup').entry = 'name=Mo'; turn(e, ':body', 'ok')
+  eq('card name= typed into the card later also names the player (card edit path)', nameOf1(e), 'Mo')
+  eq('priority: all three -> character.name; "Your name?" + card -> Your name?; character.name + card -> character.name',
+    [mkName([[CN, 'Zed'], [YN, 'Kay']], 'Mo'), mkName([[YN, 'Kay']], 'Mo'), mkName([[CN, 'Zed']], 'Mo'), mkName([[YN, 'Kay'], [CN, 'Zed']])].map(nameOf1).join(' '), 'Zed Kay Zed Zed')
+  eq('an empty answer falls through to the next source (empty, spaces only, or nothing but punctuation)',
+    [mkName([[CN, ''], [YN, 'Kay']]), mkName([[CN, '   '], [YN, 'Kay']]), mkName([[CN, '!!!'], [YN, 'Kay']]), mkName([[CN, ''], [YN, '']], 'Mo'), mkName([[CN, ''], [YN, '']])].map(nameOf1).join('|'), 'Kay|Kay|Kay|Mo|')
+  eq('a name of Whitney (any case) is ignored and the next source is tried',
+    [mkName([[CN, 'Whitney']]), mkName([[CN, 'whitney']]), mkName([[CN, 'Whitney'], [YN, 'Kay']]), mkName([[CN, 'Whitney'], [YN, 'WHITNEY']], 'Mo'), mkName(undefined, 'Whitney')].map(nameOf1).join('|'), '||Kay|Mo|')
+  e = mkName(undefined, 'Whitney'); const wn = turn(e, ':body', 'ok').out
+  eq('a card with name=Whitney is skipped and says so; later card edits to Whitney too', (/Player setup skipped: name=Whitney/.test(e.firstOut) ? 'told' : 'silent') + ' ' + JSON.stringify(nameOf1(e)), 'told ""')
+  e = mkName(undefined); e.cards.find((c) => c.type === 'Player setup').entry = 'name=Whitney height=170'; const wn2 = turn(e, ':body', 'ok').out
+  eq('editing the card to name=Whitney: skipped and reported, the rest still applies', /Player setup skipped: name=Whitney/.test(wn2) + ' ' + JSON.stringify(nameOf1(e)) + ' ' + stat(e).cm, 'true "" 170')
+  eq('one-word cleanup: "Mary Ann" -> Mary, " zed!! " -> zed, "Kay Lee" (Your name?) -> Kay', [mkName([[CN, 'Mary Ann']]), mkName([[CN, ' zed!! ']]), mkName([[YN, 'Kay Lee']])].map(nameOf1).join(' '), 'Mary zed Kay')
+  eq('question wording: case and extra spaces ignored ("  YOUR   NAME?  ", "character.NAME")', [mkName([['  YOUR   NAME?  ', 'Kay']]), mkName([['character.NAME', 'Zed']])].map(nameOf1).join(' '), 'Kay Zed')
+  eq('info is not used: info.characters = [""] and info.characterNames = ["Kay"] give no name', JSON.stringify(nameOf1(mkName(undefined, undefined, undefined, { characters: [''], characterNames: ['Kay'] }))), '""')
+  // the name is used everywhere
+  ;[[[[CN, 'Zed']], undefined], [[[YN, 'Zed']], undefined], [undefined, 'Zed']].forEach(([ph, card], i) => {
+    e = mkName(ph, card)
+    turn(e, 'Zed eats a cake.', 'ok'); const typed1 = pw(e)
+    turn(e, 'You look around.', 'Zed orders a burger.')
+    eq('source ' + (i + 1) + ': typed "Zed eats a cake" and narrated "Zed orders a burger" target the player (400 + 700), not Whitney', typed1 + ' ' + pw(e), '400/0 1100/0')
+    eq('source ' + (i + 1) + ': the status line is labelled "Zed" and the sheet is still the default body (165 cm, 60 kg)', (lines(turn(e, ':body', 'ok'))[0] || '').indexOf('[Zed |') === 0 && /165 cm, 60 kg/.test(turn(e, ':body', 'ok').out) && !/Player sheet set/.test(e.firstOut), true)
+  })
+  // never applied twice
+  e = mkName([[CN, 'Zed']]); retry(e, 'The room is quiet.')
+  eq('retry does not re-apply the name (Zed, seeded once)', nameOf1(e) + ' ' + e.state.bt.seeded, 'Zed true')
+  e = mkName([[CN, 'Zed']]); undo(e, 'You look around.', 'The room is quiet.')
+  eq('undo of the first turn and replay names the player exactly once', nameOf1(e) + ' ' + e.state.bt.seeded, 'Zed true')
+  e = mkName([[CN, 'Zed']]); turn(e, 'You wait.', 'ok'); undo(e, 'You wait.', 'ok')
+  eq('undoing a later turn keeps the name (no re-seed)', nameOf1(e), 'Zed')
+  e = mkName([[CN, 'Zed']]); e.state.placeholders = PHN([[CN, 'Kay']]); turn(e, 'You wait.', 'ok'); turn(e, 'You wait.', 'ok')
+  eq('changing the placeholders later does not rename the player (applied once)', nameOf1(e), 'Zed')
+  e = mkName([[CN, 'Zed']]); e.cards.find((c) => c.type === 'Player setup').entry = e.cards.find((c) => c.type === 'Player setup').entry.replace('name=Zed', 'name=Mo'); turn(e, 'You wait.', 'ok'); turn(e, 'You wait.', 'ok')
+  eq('an explicit card edit renames once and then stays (not reverted to the answer)', nameOf1(e), 'Mo')
+  e = mkName(undefined, 'Mo')
+  eq('card-name source on turn 1: the name is not announced as a separate change', /applied:[^|\]]*name/.test(e.firstOut) + ' ' + nameOf1(e), 'false Mo')
+  // the Rue build is unchanged
+  e = mkName([[CN, 'Zed'], [YN, 'Kay']], 'Mo', '')
+  eq('Rue build ignores all of it (still Rue, no seeded mark)', nameOf1(e) + ' ' + e.state.bt.seeded, 'Rue undefined')
 
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
