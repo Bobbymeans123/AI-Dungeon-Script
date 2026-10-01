@@ -1,0 +1,1111 @@
+// ============================================================
+// BODY TRACKER for AI Dungeon: LIBRARY tab (Whitney starter)
+// Paste this whole file into the Library tab.
+// ============================================================
+
+// ---------- CONFIG: change these freely ----------
+const CFG = {
+  PACE: 3,               // muscle growth speed. 1 = realistic, 3 = fast (game pace)
+  PATTERN: 'pear',       // where new fat lands at the start: pear | apple | even
+  LOOK: 'curvy',         // what Charisma rewards: curvy | athletic | soft | off  (change in game with :look)
+  SUPPORT: true,         // supportive bra halves sag build-up (change in game with :support on/off)
+  ACTIVITY: 1.35,        // 1.2 sedentary, 1.35 light, 1.55 active
+  KCAL_PER_KG: 7700,     // energy in 1 kg of body tissue
+  FAT_GAIN: 0.75,        // share of a surplus that becomes fat (the rest is lean tissue)
+  FAT_LOSS: 0.8,         // share of a deficit that comes from fat
+  TAG_HELP: true,        // tell the AI about the hidden tags at the end of the context (turn off to save tokens)
+  DESCRIBE: true,        // add a 'Look:' line with shape and size adjectives to the AI's note (edit the words in LOOK_WORDS below)
+  FUZZY: true,           // forgive typos and odd wording when spotting actions in what you type
+  NPC_MAX: 2,            // other tracked characters go into the AI's note only while their name is in the recent story, at most this many
+  HIDE_PLAYER: true,    // true = you are not tracked, only the characters below (unnamed commands and tags then go to the first one)
+  CHARACTERS: [
+    { name: 'Whitney', pattern: 'pear', look: 'curvy', bonus: { cha: 2 },   // proud and charismatic
+      start: { height: 196, weight: 105, bodyfat: 34, underbust: 96, bust: 116, waist: 100, hips: 128, arm: 36, thigh: 75, gland: 150, potential: 225 } }
+  ],        // characters that exist from the first turn: { name, start: { weight: 70, ... }, pattern, look, bonus: { cha: 2 } }
+  AUTO: true,            // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
+  STATUS: 'commands',    // add a status line to the reply: 'off' | 'commands' (commands and spotted actions) | 'always'
+  CARD_READBACK: false,  // read hand edits of the Body sheet story card back into the tracker
+  // starting body (measurements in cm, weight in kg, gland = glandular tissue in cc per breast)
+  START: { height: 165, weight: 60, bodyfat: 26, underbust: 74, bust: 89, waist: 70, hips: 95, arm: 27, thigh: 55, gland: 90, potential: 150 },
+  // which optional systems the Author's Note tells the AI about (turn one off to save tokens)
+  FEATURES: { milk: true, mana: true, curses: true }
+}
+const CARD_TYPE = 'Body sheet'
+const CARD_KEYS = 'bodysheet'   // nothing in the story says this, so the card never costs context
+
+// ---------- constants ----------
+const REGIONS = ['chest', 'arms', 'core', 'glutes', 'legs']
+const AB = ['str', 'dex', 'con', 'int', 'wis', 'cha']
+const MEAS = ['underbust', 'bust', 'waist', 'hips', 'arm', 'thigh']
+const LIMITS = { height: [50, 230], weight: [20, 300], bodyfat: [4, 70], underbust: [40, 200], bust: [45, 250], waist: [30, 250], hips: [45, 250], arm: [15, 70], thigh: [30, 110] }
+const LABEL = { height: 'Height', weight: 'Weight', bodyfat: 'Body fat', underbust: 'Underbust', bust: 'Bust', waist: 'Waist', hips: 'Hips', arm: 'Upper arm', thigh: 'Thigh', gland: 'Glandular tissue', sag: 'Sag', potential: 'Glandular potential' }
+const UNIT = { height: 'cm', weight: 'kg', bodyfat: '%', underbust: 'cm', bust: 'cm', waist: 'cm', hips: 'cm', arm: 'cm', thigh: 'cm', gland: 'cc each', sag: '', potential: 'cc each' }
+const STAT_KEYS = Object.keys(LIMITS).concat(AB, ['gland', 'sag', 'potential'])
+const RWORD = { chest: 'chest', arms: 'arms', core: 'midsection', glutes: 'glutes', legs: 'legs' }
+const MUS_START = { chest: 2.0, arms: 3.2, core: 3.5, glutes: 3.8, legs: 9.5 }   // kg at 60 kg body weight
+const PATTERNS = {
+  pear: { chest: .12, arms: .12, core: .22, glutes: .24, legs: .30 },
+  apple: { chest: .16, arms: .12, core: .38, glutes: .16, legs: .18 },
+  even: { chest: .20, arms: .20, core: .20, glutes: .20, legs: .20 }
+}
+// cm change per kg of regional fat / muscle
+const COEF = {
+  underbust: { fat: { chest: 2.0, core: 0.7 }, mus: { chest: 3.0 } },
+  waist: { fat: { core: 4.5 }, mus: { core: 0.8 } },
+  hips: { fat: { glutes: 2.6, legs: 0.6 }, mus: { glutes: 2.0, legs: 0.5 } },
+  arm: { fat: { arms: 2.5 }, mus: { arms: 4.5 } },
+  thigh: { fat: { legs: 2.2 }, mus: { legs: 2.2 } }
+}
+const MANA_DECAY = 0.5, MILK_KCAL_PER_ML = 0.8
+const MANA_PER_KG = { mus: 8, fat: 3, gland: 150 }   // mana stored per kg of muscle, fat and glandular tissue
+const CURSES = ['hunger', 'leech', 'forced', 'bias']
+const BREAST_FAT_SHARE = 0.25, FAT_G_PER_CC = 0.92, CONN_CC = 20
+const CUPS = ['AAA', 'AA', 'A', 'B', 'C', 'D', 'DD', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
+const LOOKS = ['curvy', 'athletic', 'soft', 'off']
+const PARTS = { chest: 'chest', bust: 'chest', breast: 'chest', breasts: 'chest', arm: 'arms', arms: 'arms', core: 'core', waist: 'core', stomach: 'core', belly: 'core', abs: 'core', glute: 'glutes', glutes: 'glutes', hip: 'glutes', hips: 'glutes', leg: 'legs', legs: 'legs', thigh: 'legs', thighs: 'legs', body: 'all', all: 'all' }
+const PART_RE = '(chest|bust|breasts?|arms?|core|waist|stomach|belly|abs|glutes?|hips?|legs?|thighs?|body|all)'
+
+// ---------- small helpers ----------
+const r1 = (v) => Math.round(v * 10) / 10
+const r2 = (v) => Math.round(v * 100) / 100
+const clampN = (v, a, b) => Math.min(b, Math.max(a, v))
+const sum = (o) => REGIONS.reduce((t, r) => t + o[r], 0)
+const zero = () => ({ chest: 0, arms: 0, core: 0, glutes: 0, legs: 0 })
+const copy = (o) => JSON.parse(JSON.stringify(o))
+const fmt = (n) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+const sgn = (v) => (v >= 0 ? '+' : '')
+
+// ---------- state ----------
+const newBT = (startOverride, opts) => {
+  opts = opts || {}
+  const st = Object.assign({}, CFG.START, startOverride || {})
+  const pattern = opts.pattern || CFG.PATTERN
+  const P = PATTERNS[pattern] || PATTERNS.pear, k = st.weight / 60
+  const s = {
+    name: opts.name || '', start: st, pattern: pattern,
+    day: 1, eaten: null, burned: 0, train: zero(), height: st.height, fat: {}, mus: {}, adj: {},
+    bonus: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, gland: st.gland, sag: 0,
+    fuelLog: [], auto: {}, lastDayAt: 0, support: CFG.SUPPORT, look: opts.look || CFG.LOOK, pace: CFG.PACE,
+    lact: { on: false, stored: 0, sup: 0, demand: 0, drained: 0, lowDays: 0 }, mana: zero(),
+    curses: { hunger: false, leech: '', forced: false, bias: '' }, glandMax: st.potential, gland0: st.gland
+  }
+  const fatT = st.weight * st.bodyfat / 100
+  REGIONS.forEach((r) => { s.fat[r] = fatT * P[r]; s.mus[r] = MUS_START[r] * k })
+  s.fat0 = copy(s.fat)
+  s.mus0 = copy(s.mus)
+  s.other = st.weight - fatT - sum(s.mus)
+  MEAS.forEach((m) => { s.adj[m] = 0 })
+  s.bustA = (st.bust - st.underbust) / Math.pow(volume(s).total, 0.4)
+  s.volPrev = volume(s).tissue
+  return s
+}
+function upgradeBT(s) {   // lets an adventure started with an older version keep working
+  if (!s.start) s.start = Object.assign({}, CFG.START)
+  if (!s.pattern) s.pattern = CFG.PATTERN
+  if (s.name === undefined) s.name = ''
+  if (!s.auto) s.auto = {}
+  if (s.lastDayAt === undefined) s.lastDayAt = 0
+  if (!s.lact) s.lact = { on: false, stored: 0, sup: 0, demand: 0, drained: 0, lowDays: 0 }
+  if (!s.mana) s.mana = zero()
+  if (!s.curses) s.curses = { hunger: false, leech: '', forced: false, bias: '' }
+  if (s.glandMax === undefined) s.glandMax = s.start.potential
+  if (s.gland0 === undefined) s.gland0 = s.start.gland
+}
+const initBT = () => {
+  if (!state.bt) state.bt = newBT(); else upgradeBT(state.bt)
+  if (!state.npcs) state.npcs = {}
+  Object.keys(state.npcs).forEach((k) => upgradeBT(state.npcs[k]))
+  if (!state.bt_seeded) {   // preset characters are created once, on the first turn
+    state.bt_seeded = true
+    ;(CFG.CHARACTERS || []).forEach((c) => {
+      const k = c.name.toLowerCase()
+      if (state.npcs[k]) return
+      state.npcs[k] = newBT(c.start, { name: c.name, pattern: c.pattern, look: c.look })
+      Object.keys(c.bonus || {}).forEach((b) => { state.npcs[k].bonus[b] = c.bonus[b] })
+    })
+    if (CFG.HIDE_PLAYER) state.bt_hideYou = true
+  }
+}
+
+// ---------- several characters: you plus anyone added with :sheet add ----------
+const esc = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const npcKeys = () => Object.keys(state.npcs || {})
+function namesIn(text) {   // keys of tracked characters mentioned in the text
+  const out = []
+  npcKeys().forEach((k) => {
+    const nm = state.npcs[k].name || k
+    if (new RegExp("\\b" + esc(nm) + "(?:'s)?\\b", 'i').test(text)) out.push(k)
+  })
+  return out
+}
+const sheetOf = (key) => (key ? state.npcs[key] : state.bt)
+const defKey = () => (state.bt_hideYou && npcKeys().length ? npcKeys()[0] : '')   // who unnamed commands and tags mean
+const labelOf = (key) => (key ? state.npcs[key].name + ': ' : '')
+function recentText(text) {
+  let t = text || ''
+  if (typeof history !== 'undefined' && history && history.length) t += ' ' + history.slice(-3).map((a) => (a && a.text) || '').join(' ')
+  return t
+}
+function resetAuto() {
+  state.bt.auto = {}
+  npcKeys().forEach((k) => { state.npcs[k].auto = {} })
+}
+function dayAll(n) {   // time passes for everyone
+  const notes = [advanceDays(state.bt, n)]
+  npcKeys().forEach((k) => { notes.push(state.npcs[k].name + ': ' + advanceDays(state.npcs[k], n)) })
+  return notes.join(' | ')
+}
+
+// undo / retry support: the tracker is snapshotted once per turn, keyed by where the story is
+// (the action count plus a fingerprint of the last few actions). If we come back to a moment we
+// already saw, the tracker goes back to how it was then, so a retry or undo is never counted twice.
+const snap = () => JSON.stringify({ bt: state.bt, npcs: state.npcs || {} })
+const restore = (str) => {
+  const o = JSON.parse(str)
+  if (o && o.bt !== undefined) { state.bt = o.bt; state.npcs = o.npcs || {} } else state.bt = o   // older snapshots held just the player
+}
+const hashStr = (str) => {
+  let x = 5381
+  for (let i = 0; i < str.length; i++) x = ((x << 5) + x + str.charCodeAt(i)) | 0
+  return (x >>> 0).toString(36)
+}
+function slotKey() {
+  const c = (typeof info !== 'undefined' && info && typeof info.actionCount === 'number') ? info.actionCount : ''
+  let tail = ''
+  if (typeof history !== 'undefined' && history && history.length) {
+    tail = history.slice(-4).map((a) => (a && a.text) || '').join('\u0002')
+  }
+  if (c === '' && tail === '') return ''   // nothing tells one turn from another, so skip snapshots
+  return c + ':' + hashStr(tail)
+}
+function takeSlot(name) {
+  if (!Array.isArray(state[name])) state[name] = []
+  const list = state[name], key = slotKey()
+  if (key === '') return
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i][0] === key) { restore(list[i][1]); list.length = i; break }   // been here before: go back to that moment
+  }
+  list.push([key, snap()])
+  while (list.length > 40) list.shift()
+}
+
+// ---------- body model ----------
+function volume(s) {   // breast volume per breast, in cc
+  const fat = s.fat.chest * BREAST_FAT_SHARE * 1000 / FAT_G_PER_CC / 2
+  const tissue = fat + s.gland + CONN_CC, milk = s.lact.stored / 2
+  return { fat: fat, gland: s.gland, conn: CONN_CC, milk: milk, tissue: tissue, total: tissue + milk }
+}
+function chestCalc(s) {
+  const V = volume(s), g = V.gland / V.tissue
+  const musR = s.mus.chest / s.mus0.chest
+  const firm = clampN(60 + 80 * (g - 0.25) + 10 * (musR - 1) / 0.6 - 12 * s.sag, 0, 100)
+  return { V: V, g: g, firm: firm }
+}
+const firmWord = (f) => (f >= 70 ? 'firm' : f >= 45 ? 'moderately firm' : 'soft')
+const sagWord = (x) => (x < 0.4 ? 'no sag' : x < 1.2 ? 'slight sag' : x < 2.2 ? 'moderate sag' : 'significant sag')
+
+// ---- milk ----
+const milkCap = (s) => s.gland * 2 * 1.5                          // ml both breasts hold when full
+const milkRateMax = (s) => 750 * Math.pow(s.gland / 150, 0.8)     // ml per day at full supply, both breasts
+const milkCost = (s) => milkRateMax(s) * s.lact.sup * MILK_KCAL_PER_ML
+const glandCeil = (s) => s.glandMax * (s.curses.forced ? 1.5 : 1)
+const lactActive = (s) => s.lact.on || s.curses.forced
+function drainMilk(s, req) {
+  const got = Math.min(s.lact.stored, req)
+  s.lact.stored -= got
+  s.lact.drained += req   // asking counts as demand even if there is less to take
+  return got
+}
+// ---- mana ----
+function manaCap(s, r) {
+  let c = s.mus[r] * MANA_PER_KG.mus + s.fat[r] * MANA_PER_KG.fat
+  if (r === 'chest') c += s.gland * 2 / 1000 * MANA_PER_KG.gland
+  return c
+}
+const fillOf = (s, rs) => {
+  let m = 0, c = 0
+  rs.forEach((r) => { m += s.mana[r]; c += manaCap(s, r) })
+  return c ? m / c : 0
+}
+function manaInfuse(s, target, n) {
+  const rs = target === 'all' ? REGIONS : [target]
+  const free = {}
+  let tot = 0
+  rs.forEach((r) => { free[r] = Math.max(0, manaCap(s, r) - s.mana[r]); tot += free[r] })
+  const add = Math.min(n, tot)
+  if (tot > 0) rs.forEach((r) => { s.mana[r] += add * free[r] / tot })
+  return { added: add, wasted: n - add }
+}
+function manaSpend(s, target, n) {
+  const rs = target === 'all' ? REGIONS : [target]
+  let tot = 0
+  rs.forEach((r) => { tot += s.mana[r] })
+  const spent = Math.min(n, tot)
+  if (tot > 0) rs.forEach((r) => { s.mana[r] -= spent * s.mana[r] / tot })
+  return { spent: spent, short: n - spent }
+}
+function setCurse(s, op, name, region) {
+  const on = op === 'add'
+  if (name === 'hunger') s.curses.hunger = on
+  else if (name === 'forced') s.curses.forced = on
+  else if (name === 'leech') s.curses.leech = on ? (region || 'chest') : ''
+  else if (name === 'bias') s.curses.bias = on ? (region || 'chest') : ''
+  return (on ? 'Cursed: ' : 'Curse lifted: ') + name + (on && region ? ' (' + region + ')' : '')
+}
+
+function measures(s) {
+  const fatT = sum(s.fat), musT = sum(s.mus), weight = fatT + musT + s.other
+  const m = { height: s.height, weight: weight, bodyfat: fatT / weight * 100 }
+  MEAS.forEach((k) => {
+    if (k === 'bust') return
+    let v = s.start[k] + s.adj[k]
+    const c = COEF[k]
+    for (const r in c.fat) v += c.fat[r] * (s.fat[r] - s.fat0[r])
+    for (const r in c.mus) v += c.mus[r] * (s.mus[r] - s.mus0[r])
+    m[k] = clampN(v, LIMITS[k][0], LIMITS[k][1])
+  })
+  // bust = underbust plus the cup difference, which comes from breast volume
+  m.bust = clampN(m.underbust + s.bustA * Math.pow(volume(s).total, 0.4) + s.adj.bust, LIMITS.bust[0], LIMITS.bust[1])
+  return m
+}
+function cup(m) {
+  const idx = Math.round((m.bust - m.underbust - 7.5) / 2.5)
+  return (Math.round(m.underbust / 5) * 5) + CUPS[clampN(idx, 0, CUPS.length - 1)]
+}
+
+// Ability scores. Body based: STR, DEX, CON, CHA. Story based: INT, WIS.
+function abilities(s, m) {
+  const H2 = Math.pow(m.height / s.start.height, 2), bf = m.bodyfat
+  const wm = s.mus.legs + s.mus.glutes + 1.3 * s.mus.arms + 1.2 * s.mus.chest + 0.9 * s.mus.core
+  const wRatio = wm / (23.01 * H2 * (s.start.weight / 60))
+  const coreLeg = (s.mus.core / s.mus0.core + s.mus.legs / s.mus0.legs) / 2
+  const musRatio = sum(s.mus) / (22 * H2 * (s.start.weight / 60))
+  const inRange = bf >= 18 && bf <= 30
+  const dist = bf < 18 ? 18 - bf : bf > 30 ? bf - 30 : 0
+  const n = s.fuelLog.length, steady = n ? s.fuelLog.reduce((a, c) => a + c, 0) / n : 0
+  const raw = {}
+  raw.str = 10 + (wm - 23.01 * H2 * (s.start.weight / 60)) * 0.6
+  raw.dex = 10 + (26 - clampN(bf, 12, 45)) * 0.25 + 2 * (coreLeg - 1) / 0.6
+  raw.con = 10 + (inRange ? 1 : -Math.min(5, dist * 0.3)) + (n >= 3 ? (steady - 0.5) * 3 : 0) + (musRatio - 1) * 3
+  raw.int = 10
+  raw.wis = 10
+  const whr = m.waist / m.hips
+  let shape = 0
+  if (s.look === 'curvy') shape = 1 - Math.abs(whr - 0.68) / 0.15
+  else if (s.look === 'athletic') shape = (clampN((wRatio - 1) / 0.3, -1, 1) + clampN(1 - Math.abs(bf - 20) / 15, -1, 1)) / 2
+  else if (s.look === 'soft') shape = 1 - Math.abs(bf - 32) / 12
+  shape = clampN(shape, -1, 1)
+  raw.cha = 10 + 2 * shape + ((raw.str + raw.dex + raw.con) / 3 - 10) * 0.2
+  // mana gives temporary bonuses; full breasts cost Dexterity
+  const mb = { str: 3 * fillOf(s, ['arms', 'chest', 'legs']), dex: 3 * fillOf(s, ['core', 'glutes']), con: 2 * fillOf(s, REGIONS), int: 2 * fillOf(s, REGIONS), wis: 2 * fillOf(s, REGIONS), cha: 0 }
+  const fillMilk = s.lact.stored / Math.max(1, milkCap(s))
+  const pen = { dex: fillMilk > 0.95 ? 2 : fillMilk > 0.8 ? 1 : 0 }
+  const out = {}
+  AB.forEach((k) => {
+    const perm = raw[k] + s.bonus[k], total = perm + mb[k] - (pen[k] || 0)
+    out[k] = { perm: perm, total: total, score: clampN(Math.round(total), 3, 20) }
+  })
+  return out
+}
+const statLine = (a) => AB.map((k) => k.toUpperCase() + ' ' + a[k].score).join(', ')
+
+// ---------- energy and growth ----------
+const leanMass = (s, m) => m.weight - sum(s.fat)
+const need = (s, m, burn) => {
+  const base = (370 + 21.6 * leanMass(s, m)) * CFG.ACTIVITY
+  return Math.round(base + (burn || 0) + milkCost(s) + (s.curses.hunger ? base * 0.25 : 0))
+}
+
+// where fat lands (gain) or leaves (loss: the stubborn areas empty last)
+function distWeights(s, gain) {
+  const p = PATTERNS[s.pattern] || PATTERNS.pear
+  let w = {}
+  if (gain) w = Object.assign({}, p)
+  else {
+    let tot = 0
+    REGIONS.forEach((r) => { w[r] = 1 / p[r]; tot += w[r] })
+    REGIONS.forEach((r) => { w[r] /= tot })
+  }
+  const b = s.curses.bias   // growth bias curse: new fat lands here, and leaves here last
+  if (b) {
+    if (gain) REGIONS.forEach((r) => { w[r] = 0.4 * w[r] + (r === b ? 0.6 : 0) })
+    else {
+      w[b] *= 0.3
+      let t = 0
+      REGIONS.forEach((r) => { t += w[r] })
+      REGIONS.forEach((r) => { w[r] /= t })
+    }
+  }
+  return w
+}
+
+function advanceDay(s, useLogged) {
+  const m0 = measures(s)
+  const eaten = useLogged ? s.eaten : null
+  const burned = useLogged ? s.burned : 0
+  const nd = need(s, m0, burned)
+  const net = eaten === null ? 0 : eaten - nd
+  if (eaten !== null) {
+    s.fuelLog.push(Math.abs(eaten / nd - 1) <= 0.25 ? 1 : 0)
+    if (s.fuelLog.length > 14) s.fuelLog.shift()
+  }
+  const deltaKg = net / CFG.KCAL_PER_KG
+  const share = net >= 0 ? CFG.FAT_GAIN : CFG.FAT_LOSS
+  const fatD = deltaKg * share
+  const w = distWeights(s, fatD >= 0)
+  REGIONS.forEach((r) => { s.fat[r] = Math.max(0.3, s.fat[r] + fatD * w[r]) })
+  s.other = Math.max(8, s.other + deltaKg * (1 - share))
+
+  // muscle grows where you trained, and shrinks a little elsewhere in a hard deficit
+  const fuel = eaten === null ? 0.6 : net >= 200 ? 1 : net >= -300 ? 0.6 : 0.25
+  const musBefore = sum(s.mus)
+  const grew = []
+  REGIONS.forEach((r) => {
+    const t = useLogged ? s.train[r] : 0
+    if (t > 0) {
+      const room = Math.max(0, 1 - (s.mus[r] / s.mus0[r] - 1) / 0.6)
+      const g = s.mus[r] * 0.0011 * t * fuel * room * s.pace
+      s.mus[r] += g
+      if (g > 0) grew.push(RWORD[r])
+    } else if (net < -500) {
+      s.mus[r] -= s.mus[r] * 0.0004 * (-net / 500)
+    }
+  })
+  const musD = sum(s.mus) - musBefore
+
+  // milk: supply follows demand, storage fills, and full breasts leak and slow down
+  const L = s.lact, rateMax = milkRateMax(s), capT = milkCap(s)
+  let leaked = 0
+  if (lactActive(s)) {
+    L.demand = 0.7 * L.demand + 0.3 * L.drained
+    let target = clampN(L.demand / rateMax, 0.15, 1)
+    if (s.curses.forced) target = Math.max(target, 0.6)
+    L.sup += (target - L.sup) * 0.25
+  } else {
+    L.sup *= 0.85
+    L.demand *= 0.7
+    L.stored *= 0.8   // unused milk is slowly reabsorbed
+    if (L.sup < 0.01) L.sup = 0
+    if (L.stored < 0.5) L.stored = 0
+  }
+  const prod = rateMax * L.sup
+  L.stored += prod
+  if (L.stored > capT) { leaked = L.stored - capT; L.stored = capT; L.sup *= 0.92 }
+  // glandular tissue adapts: grows under sustained high demand, shrinks back after a week of low demand
+  const ratio = rateMax > 0 ? L.demand / rateMax : 0
+  if (lactActive(s) && ratio > 0.9 && s.gland < glandCeil(s)) s.gland = Math.min(glandCeil(s), s.gland * (1 + 0.004 * s.pace))
+  L.lowDays = ((lactActive(s) && ratio >= 0.3) || s.curses.forced) ? 0 : L.lowDays + 1
+  if (L.lowDays >= 7 && s.gland > s.gland0) s.gland = Math.max(s.gland0, s.gland * 0.993)
+  L.drained = 0
+
+  // mana fades fast; a leech curse refills one area and turns overflow into lasting tissue
+  REGIONS.forEach((r) => { s.mana[r] *= (1 - MANA_DECAY) })
+  if (s.curses.leech) {
+    const r = s.curses.leech, cap = manaCap(s, r), add = cap * 0.7, space = cap - s.mana[r]
+    if (add <= space) s.mana[r] += add
+    else {
+      s.mana[r] = cap
+      const over = add - space
+      if (r === 'chest') s.gland = Math.min(600, s.gland + over * 0.05)
+      else s.mus[r] += over * 0.0008
+    }
+  }
+
+  // strain on the breast tissue: fast tissue change, heavy volume and full breasts all add sag
+  const v1 = volume(s)
+  const rate = Math.abs(v1.tissue - s.volPrev) / s.volPrev * 100
+  const heavy = Math.max(0, v1.total - 500) / 500
+  const fillM = L.stored / Math.max(1, capT)
+  const engorge = fillM > 0.8 ? (fillM - 0.8) / 0.2 * 0.02 : 0
+  s.sag = clampN(s.sag + (0.015 * heavy + 0.02 * rate + engorge) * (s.support ? 0.5 : 1), 0, 3)
+  s.volPrev = v1.tissue
+
+  s.day++
+  s.eaten = null
+  s.burned = 0
+  s.train = zero()
+
+  const milkTxt = lactActive(s) ? ', milk +' + Math.round(prod) + ' ml' + (leaked > 1 ? ' (' + Math.round(leaked) + ' leaked)' : '') : ''
+  if (eaten === null) return 'Day ' + (s.day - 1) + ': nothing logged, assumed maintenance' + milkTxt
+  let rep = 'Day ' + (s.day - 1) + ': ate ' + fmt(eaten) + ', needed ' + fmt(nd) + ' (' + sgn(net) + fmt(net) + ' kcal)'
+  if (Math.abs(musD) >= 0.005) rep += ', muscle ' + sgn(musD) + r2(musD) + ' kg' + (grew.length ? ' in ' + grew.join(', ') : '')
+  return rep + milkTxt
+}
+function advanceDays(s, n) {
+  n = clampN(Math.round(n), 1, 30)
+  let rep = advanceDay(s, true)
+  for (let i = 1; i < n; i++) advanceDay(s, false)
+  if (n > 1) rep += ' (+' + (n - 1) + ' more days at maintenance)'
+  return rep
+}
+
+// ---------- setting values ----------
+function currentValue(s, k) {
+  if (AB.indexOf(k) >= 0) return abilities(s, measures(s))[k].perm
+  if (k === 'gland') return s.gland
+  if (k === 'potential') return s.glandMax
+  if (k === 'sag') return s.sag
+  return measures(s)[k]
+}
+function setValue(s, k, v) {
+  if (AB.indexOf(k) >= 0) { s.bonus[k] += v - currentValue(s, k); return }
+  if (k === 'gland') { s.gland = clampN(v, 0, 600); return }
+  if (k === 'potential') { s.glandMax = clampN(v, 0, 600); return }
+  if (k === 'sag') { s.sag = clampN(v, 0, 3); return }
+  v = clampN(v, LIMITS[k][0], LIMITS[k][1])
+  const m = measures(s)
+  if (k === 'height') s.height = v
+  else if (k === 'weight') s.other = Math.max(5, s.other + (v - m.weight))
+  else if (k === 'bodyfat') {
+    const d = m.weight * v / 100 - sum(s.fat)
+    const w = distWeights(s, d >= 0)
+    REGIONS.forEach((r) => { s.fat[r] = Math.max(0.2, s.fat[r] + d * w[r]) })
+    s.other = Math.max(5, s.other - d)
+  } else s.adj[k] += v - m[k]
+}
+function applyOp(s, k, op, n) {
+  const old = currentValue(s, k)
+  setValue(s, k, op === '+' ? old + n : op === '-' ? old - n : n)
+  const now = currentValue(s, k)
+  if (AB.indexOf(k) >= 0) return k.toUpperCase() + ' ' + Math.round(old) + ' to ' + Math.round(now)
+  return (LABEL[k] || k) + ' ' + r1(old) + ' to ' + r1(now) + (UNIT[k] ? ' ' + UNIT[k] : '')
+}
+
+function doMana(s, sign, n, region) {
+  n = Math.min(n, 2000)
+  if (sign === '+') {
+    const r = manaInfuse(s, region, n)
+    return 'Mana +' + Math.round(r.added) + (region === 'all' ? '' : ' ' + region) + (r.wasted > 0.5 ? ' (' + Math.round(r.wasted) + ' wasted)' : '')
+  }
+  const r = manaSpend(s, region, n)
+  return 'Mana -' + Math.round(r.spent) + (region === 'all' ? '' : ' ' + region) + (r.short > 0.5 ? ' (short by ' + Math.round(r.short) + ')' : '')
+}
+
+// ---------- tags written by the AI ----------
+function parseOne(t) {   // one tag such as "[ate 600]" -> an event, or null if it is not ours
+  let m = t.match(/^\[\s*train\s+(chest|arms|core|glutes|legs)(?:\s+([1-3]))?\s*\]$/i)
+  if (m) return { type: 'train', r: m[1].toLowerCase(), n: m[2] ? parseInt(m[2], 10) : 2 }
+  m = t.match(/^\[\s*curse\s+(add|remove)\s+(hunger|leech|forced|bias)(?:\s+(chest|arms|core|glutes|legs))?\s*\]$/i)
+  if (m) return { type: 'curse', op: m[1].toLowerCase(), name: m[2].toLowerCase(), r: m[3] ? m[3].toLowerCase() : '' }
+  m = t.match(/^\[\s*lactating\s+(on|off)\s*\]$/i)
+  if (m) return { type: 'lact', on: m[1].toLowerCase() === 'on' }
+  m = t.match(/^\[\s*mana\s*([+\-])\s*(\d+(?:\.\d+)?)(?:\s+(chest|arms|core|glutes|legs))?\s*\]$/i)
+  if (m) return { type: 'mana', sign: m[1], n: parseFloat(m[2]), r: m[3] ? m[3].toLowerCase() : 'all' }
+  m = t.match(/^\[\s*(\w+)\s*([+\-=]?)\s*(\d+(?:\.\d+)?)?\s*(?:cm|kg|kcal|cc|ml|%)?\s*\]$/i)
+  if (m) {
+    const k = m[1].toLowerCase(), op = m[2], n = m[3] === undefined ? null : parseFloat(m[3])
+    if (STAT_KEYS.indexOf(k) >= 0 && op && n !== null) return { type: 'stat', k: k, op: op, n: n }
+    if (k === 'ate' && n !== null) return { type: 'ate', n: n }
+    if (k === 'burn' && n !== null) return { type: 'burn', n: n }
+    if (k === 'milk' && op === '-' && n !== null) return { type: 'milk', n: n }
+    if (k === 'day') return { type: 'day', n: n || 1 }
+  }
+  return null
+}
+function parseTags(text) {
+  const events = []
+  const clean = text.replace(/\[[^\[\]\n]{1,80}\]/g, (tag) => {
+    let who = '', t = tag
+    const keys = npcKeys()
+    for (let i = 0; i < keys.length; i++) {   // "[ate 300 Whitney]" or "[Whitney: ate 300]"
+      const nm = esc(state.npcs[keys[i]].name || keys[i])
+      const tail = new RegExp('\\s+' + nm + '\\s*\\]$', 'i'), head = new RegExp('^\\[\\s*' + nm + '\\s*[:,]?\\s+', 'i')
+      if (tail.test(t)) { who = keys[i]; t = t.replace(tail, ']'); break }
+      if (head.test(t)) { who = keys[i]; t = t.replace(head, '['); break }
+    }
+    const ev = parseOne(t)
+    if (!ev) return tag   // not one of ours: leave it alone
+    ev.who = who
+    events.push(ev)
+    return '\u0001'
+  })
+  return { clean: clean.replace(/ ?\u0001/g, ''), events: events }
+}
+function applyAll(events, useSkip) {   // sends each event to the right character; a new day passes for everyone
+  const notes = [], groups = {}
+  events.filter((e) => e.type !== 'day').forEach((e) => { const k = e.who || defKey(); (groups[k] = groups[k] || []).push(e) })
+  Object.keys(groups).forEach((k) => {
+    const s = sheetOf(k)
+    if (!s) return
+    applyEvents(s, groups[k], useSkip ? s.auto : null).forEach((n) => notes.push(labelOf(k) + n))
+    state.bt_touched = (state.bt_touched || []).concat(state.bt_touched && state.bt_touched.indexOf(k) >= 0 ? [] : [k])
+  })
+  if (!(useSkip && state.bt.auto && state.bt.auto.day)) {
+    events.filter((e) => e.type === 'day').forEach((e) => { notes.push(dayAll(Math.min(e.n, 30))) })
+  }
+  return notes
+}
+function applyEvents(s, events, skip) {
+  if (skip) events = events.filter((e) => !skip[e.type])
+  const order = { stat: 0, curse: 1, lact: 2, ate: 3, burn: 4, train: 5, mana: 6, milk: 7, day: 8 }
+  events.sort((a, b) => order[a.type] - order[b.type])
+  const notes = []
+  events.forEach((e) => {
+    if (e.type === 'stat') notes.push(applyOp(s, e.k, e.op, e.n))
+    else if (e.type === 'ate') { const n = Math.min(e.n, 5000); s.eaten = (s.eaten || 0) + n; notes.push('+' + fmt(n) + ' kcal') }
+    else if (e.type === 'burn') { const n = Math.min(e.n, 3000); s.burned += n; notes.push('Burned ' + fmt(n) + ' kcal') }
+    else if (e.type === 'train') { s.train[e.r] = Math.min(4, s.train[e.r] + e.n); notes.push('Trained ' + RWORD[e.r]) }
+    else if (e.type === 'curse') notes.push(setCurse(s, e.op, e.name, e.r))
+    else if (e.type === 'lact') { s.lact.on = e.on; notes.push('Lactation ' + (e.on ? 'on' : 'off')) }
+    else if (e.type === 'mana') notes.push(doMana(s, e.sign, e.n, e.r))
+    else if (e.type === 'milk') { const req = Math.min(e.n, 3000); const got = drainMilk(s, req); notes.push('Drained ' + Math.round(got) + ' ml') }
+    else if (e.type === 'day') notes.push(advanceDays(s, e.n))
+  })
+  return notes
+}
+
+// ---------- spotting actions in what the player types (works without AI tags) ----------
+// Text is lower-cased, stretched letters are squeezed ("sleeeep" -> "sleep") and matching forgives small typos.
+const normText = (text) => text.toLowerCase()
+  .replace(/\b(push|pull|sit|press)[- ]ups?\b/g, '$1up')
+  .replace(/(.)\1{2,}/g, '$1$1')
+  .replace(/[^a-z0-9'\- ]+/g, ' ')
+const tokensOf = (text) => normText(text).split(/\s+/).filter(Boolean)
+function editDist(a, b, subCost) {   // Damerau-Levenshtein: a swapped pair of letters counts as one typo
+  const d = []
+  for (let i = 0; i <= a.length; i++) { d.push([i]) }
+  for (let j = 1; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : subCost
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+    }
+  }
+  return d[a.length][b.length]
+}
+function near(tok, word) {
+  if (tok === word) return true
+  if (!CFG.FUZZY) return false
+  const L = word.length
+  if (tok.length >= 3 && tok.length < L && tok.length >= L - 1 && word.startsWith(tok)) return true   // last letter missing ("cak")
+  if (L === 3 && tok.length === 4 && tok.startsWith(word)) return true   // one extra letter on a 3-letter word ("eatt")
+  const lim = L <= 3 ? 0 : L <= 8 ? 1 : 2
+  if (lim === 0 || tok.length < 4 || Math.abs(tok.length - L) > lim) return false
+  // short words must not change a letter ("lake" is not "cake", "sheep" is not "sleep")
+  return editDist(tok, word, L <= 5 ? 2 : 1) <= lim
+}
+const findTok = (toks, words, from) => {
+  for (let i = from || 0; i < toks.length; i++) { for (let k = 0; k < words.length; k++) { if (near(toks[i], words[k])) return i } }
+  return -1
+}
+
+const FOODS = [   // [words, kcal per serving, kcal for the whole thing (optional)]
+  [['cake', 'cakes', 'cheesecake', 'gateau'], 600, 12000],
+  [['cupcake', 'cupcakes', 'muffin', 'muffins'], 350],
+  [['shake', 'shakes', 'protein', 'smoothie', 'smoothies'], 130],
+  [['pizza', 'pizzas'], 285, 2300],
+  [['burger', 'burgers', 'cheeseburger', 'hamburger'], 550],
+  [['sandwich', 'sandwiches', 'sub', 'wrap', 'burrito', 'taco', 'tacos'], 400],
+  [['salad', 'salads'], 250],
+  [['steak', 'chicken', 'pork', 'fish', 'meat', 'ribs', 'sausage', 'bacon', 'ham', 'turkey', 'lamb'], 450],
+  [['pasta', 'spaghetti', 'noodles', 'noodle', 'lasagna', 'ramen', 'macaroni'], 450],
+  [['rice', 'curry', 'sushi'], 300],
+  [['soup', 'stew', 'porridge', 'oatmeal', 'cereal'], 250],
+  [['fries', 'chips', 'crisps', 'nachos', 'popcorn'], 400],
+  [['bread', 'toast', 'bagel', 'roll', 'rolls', 'pancake', 'pancakes', 'waffle', 'waffles'], 150],
+  [['egg', 'eggs', 'omelette', 'omelet'], 75],
+  [['apple', 'apples', 'banana', 'bananas', 'fruit', 'orange', 'oranges', 'grapes', 'berries', 'strawberries', 'peach', 'pear'], 100],
+  [['cookie', 'cookies', 'biscuit', 'biscuits', 'brownie', 'brownies'], 160],
+  [['chocolate', 'candy', 'sweets', 'sweet', 'lollipop', 'gummies'], 250],
+  [['icecream', 'gelato', 'sundae'], 300],
+  [['donut', 'donuts', 'doughnut', 'doughnuts', 'pastry', 'pastries', 'croissant', 'pie', 'pies', 'tart'], 300],
+  [['milk', 'juice', 'latte', 'cocoa', 'lemonade'], 150],
+  [['soda', 'cola', 'coke', 'pepsi'], 140],
+  [['beer', 'wine', 'cocktail', 'whiskey', 'vodka', 'ale'], 150],
+  [['cheese', 'yogurt', 'yoghurt', 'butter'], 200],
+  [['nuts', 'peanuts', 'almonds', 'granola', 'bar'], 200],
+  [['water', 'tea', 'coffee'], 0]
+]
+const MEALS = { breakfast: 450, brunch: 600, lunch: 600, dinner: 700, supper: 700, snack: 200, snacks: 300, meal: 500, dessert: 350, feast: 1500 }
+const QTY = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, couple: 2, few: 3, several: 3, both: 2 }
+const STRONG_EAT = ['eat', 'eats', 'ate', 'eating', 'eaten', 'devour', 'devours', 'gulp', 'swallow', 'chew', 'munch', 'nibble', 'bite', 'drink', 'drinks', 'drank', 'sip', 'chug', 'consume', 'scarf', 'stuff', 'wolf', 'feast', 'dine', 'inhale', 'gorge', 'binge', 'feed', 'feeds', 'fed']
+const WEAK_EAT = ['have', 'having', 'take', 'grab', 'try', 'taste', 'sample', 'finish', 'pour', 'order', 'get', 'grab', 'help', 'mix', 'make', 'cook', 'polish', 'share', 'split', 'serve', 'offer', 'give', 'hand', 'has', 'had']
+function detectAte(text) {
+  const toks = tokensOf(text)
+  const strong = findTok(toks, STRONG_EAT) >= 0, weak = findTok(toks, WEAK_EAT) >= 0
+  if (!strong && !weak) return 0
+  let total = 0, found = false
+  const qtyBefore = (i) => {   // nearest quantity word in the few words before the food
+    for (let j = i - 1; j >= Math.max(0, i - 5); j--) {
+      const w = toks[j]
+      if (/^\d+(?:\.\d+)?$/.test(w)) return w
+      if (QTY[w] || w === 'half' || w === 'whole' || w === 'entire' || w === 'all') return w
+    }
+    return null
+  }
+  FOODS.forEach((f) => {
+    const i = findTok(toks, f[0])
+    if (i < 0) return
+    found = true
+    const q = qtyBefore(i)
+    let kcal = f[1]
+    if (q) {
+      if (/^\d/.test(q)) kcal = f[1] * parseFloat(q)
+      else if (QTY[q]) kcal = f[1] * QTY[q]
+      else if (q === 'half') kcal = f[2] ? f[2] / 2 : f[1] * 0.5
+      else kcal = f[2] ? f[2] : f[1] * 4   // whole / entire / all
+    }
+    total += kcal
+  })
+  Object.keys(MEALS).forEach((w) => {
+    if (findTok(toks, [w]) >= 0 && !found) { found = true; total += MEALS[w] }
+  })
+  if (!found) return strong ? 400 : 0   // "I eat" with no food named counts as a plain meal; "I have" alone does not
+  return Math.round(Math.min(total, 5000))
+}
+
+const EX_LEGS = ['squat', 'squats', 'lunge', 'lunges', 'calf', 'legpress']
+const EX_GLUTES = ['deadlift', 'deadlifts', 'thrust', 'thrusts', 'glute', 'glutes', 'bridges']
+const EX_ARMS = ['curl', 'curls', 'bicep', 'biceps', 'tricep', 'triceps', 'pullup', 'pullups', 'dumbbell', 'dumbbells', 'kettlebell', 'kettlebells', 'barbell', 'barbells']
+const EX_CHEST = ['pushup', 'pushups', 'bench', 'benchpress', 'fly', 'flies', 'flyes', 'pressup', 'pressups']
+const EX_CORE = ['plank', 'planks', 'crunch', 'crunches', 'situp', 'situps', 'abs', 'core']
+const EX_GENERIC = ['workout', 'workouts', 'exercise', 'exercises', 'exercising', 'gym', 'train', 'training', 'lift', 'lifting', 'lifts', 'weights', 'weight', 'reps', 'burpees', 'burpee', 'calisthenics']
+const EX_CARDIO = ['jog', 'jogging', 'jogs', 'sprint', 'sprinting', 'treadmill', 'cardio', 'swim', 'swimming', 'aerobics']
+const EX_ACTION = ['do', 'does', 'doing', 'did', 'perform', 'start', 'begin', 'hit', 'lift', 'lifting', 'use', 'using', 'grab', 'pick', 'curl', 'curls', 'press', 'pump', 'train', 'training', 'workout', 'exercise', 'exercising', 'work', 'swing', 'hoist', 'try', 'go', 'head', 'squat', 'squats', 'lunge', 'lunges', 'deadlift', 'deadlifts', 'plank', 'planks', 'jog', 'sprint', 'swim', 'crunches', 'burpees', 'pushups', 'situps', 'pullups']
+function detectExercise(text) {
+  const toks = tokensOf(text)
+  if (findTok(toks, EX_ACTION) < 0) return null
+  const regions = []
+  const add = (rs) => rs.forEach((r) => { if (regions.indexOf(r) < 0) regions.push(r) })
+  if (findTok(toks, EX_LEGS) >= 0) add(['legs'])
+  if (findTok(toks, EX_GLUTES) >= 0) add(['glutes', 'legs'])
+  if (findTok(toks, EX_ARMS) >= 0) add(['arms'])
+  if (findTok(toks, EX_CHEST) >= 0) add(['chest', 'arms'])
+  if (findTok(toks, EX_CORE) >= 0) add(['core'])
+  const generic = findTok(toks, EX_GENERIC) >= 0
+  const norm = normText(text)
+  const cardio = findTok(toks, EX_CARDIO) >= 0 || /\brun(?:s|ning)? (?:laps|for|around|a mile|miles|km)\b|\bgo(?:es)? (?:for )?a run\b/.test(norm)
+  if (generic && regions.length === 0) add(['legs', 'arms', 'chest'])
+  if (regions.length === 0 && !cardio) return null
+  const effort = findTok(toks, ['hard', 'heavy', 'intense', 'max', 'maximum', 'brutal', 'grueling', 'punishing', 'exhausting', 'intensely', 'vigorously']) >= 0 || /all[- ]out/.test(norm) ? 3
+    : findTok(toks, ['light', 'easy', 'gentle', 'slow', 'warmup', 'casual', 'lightly', 'quick']) >= 0 ? 1 : 2
+  return { regions: regions, effort: effort, burn: [150, 300, 450][effort - 1] }
+}
+
+const SLEEP_WORDS = ['sleep', 'sleeps', 'slept', 'asleep', 'bedtime', 'snooze', 'slumber']
+function detectSleep(text) {
+  const norm = normText(text)
+  if (/\b(?:nap|naps|doze|dozes|can'?t sleep|cannot sleep|not sleep|don'?t sleep|unable to sleep|no sleep)\b/.test(norm)) return false
+  const toks = tokensOf(text)
+  if (findTok(toks, SLEEP_WORDS) >= 0) return true
+  return /\b(?:go(?:es|ing)? to bed|turn(?:s|ing)? in\b|hit(?:s|ting)? the (?:hay|sack)|lie(?:s)? down (?:and|to) (?:sleep|rest)|call(?:s|ing)? it a night|lights out|rest (?:until|till|for the night|overnight)|(?:wait|stay|rest|wake|sleep)\w* (?:until|till|for) (?:the )?(?:morning|tomorrow|dawn|next day)|skip (?:to|ahead to) (?:the )?(?:morning|tomorrow|next day)|(?:the )?next (?:morning|day)|overnight|end (?:the|my|your|of the) day)\b/.test(norm)
+}
+function autoDetectAll(text) {
+  const res = { notes: [], touched: [] }
+  if (!CFG.AUTO) return res
+  const names = namesIn(text)
+  let keys = state.bt_hideYou ? [] : ['']   // with your sheet hidden, what you do yourself is not tracked
+  if (names.length) {   // "Whitney eats cake" goes to Whitney; "I share a cake with Whitney" goes to both
+    const both = /\b(?:together|both|we|us|share|shares|sharing)\b/i.test(text) || names.some((k) => {
+      const nm = esc(state.npcs[k].name || k)
+      return new RegExp('\\bwith\\s+' + nm + '\\b|\\b' + nm + '\\s+and\\s+(?:i|me|you)\\b|\\b(?:i|me|you)\\s+and\\s+' + nm + '\\b', 'i').test(text)
+    })
+    keys = both && !state.bt_hideYou ? [''].concat(names) : names
+  }
+  const ev = []
+  const kcal = detectAte(text), ex = detectExercise(text)
+  keys.forEach((k) => {
+    const s = sheetOf(k)
+    if (!s) return
+    if (kcal > 0) { ev.push({ type: 'ate', n: kcal, who: k }); s.auto.ate = true }
+    if (ex) {
+      ev.push({ type: 'burn', n: ex.burn, who: k }); s.auto.burn = true
+      ex.regions.forEach((r) => { ev.push({ type: 'train', r: r, n: ex.effort, who: k }); s.auto.train = true })
+    }
+  })
+  if (kcal > 0 || ex) res.touched = keys.slice()
+  const nowCount = typeof info !== 'undefined' && info && typeof info.actionCount === 'number' ? info.actionCount : 0
+  if (detectSleep(text) && (!state.bt.lastDayAt || !nowCount || nowCount - state.bt.lastDayAt >= 4)) {
+    ev.push({ type: 'day', n: 1 }); state.bt.auto.day = true; state.bt.lastDayAt = nowCount
+    res.touched = ['']
+  }
+  state.bt_touched = []
+  res.notes = applyAll(ev, false)
+  if (res.notes.length) res.touched = res.touched.length ? res.touched : state.bt_touched
+  return res
+}
+
+// ---------- commands typed by the player ----------
+const CMD_RE = [
+  ['sheetadd', /:sheet[ \t]+add[ \t]+([A-Za-z][\w\-]*)((?:[ \t]+\w+=[\w.\-]+)*)/i],
+  ['sheetremove', /:sheet[ \t]+remove[ \t]+([A-Za-z][\w\-]*)/i],
+  ['sheetlist', /:sheet[ \t]+list\b/i],
+  ['sheetyou', /:sheet[ \t]+you[ \t]+(on|off)/i],
+  ['set', /:set[ \t]+(\w+)[ \t]+(-?\d+(?:\.\d+)?)/i],
+  ['eat', /:eat[ \t]+(\d+)/i],
+  ['burn', /:burn[ \t]+(\d+)/i],
+  ['train', /:train[ \t]+(chest|arms|core|glutes|legs)(?:[ \t]+([1-3]))?/i],
+  ['day', /:day(?:[ \t]+(\d+))?\b/i],
+  ['gland', /:gland[ \t]+([+-]?\d+)/i],
+  ['potential', /:potential[ \t]+([+-]?\d+)/i],
+  ['lactate', /:lactate[ \t]+(on|off)/i],
+  ['milk', /:milk[ \t]+(\d+)/i],
+  ['mana', /:mana[ \t]+([+-])(\d+)(?:[ \t]+(chest|arms|core|glutes|legs))?/i],
+  ['curse', /:curse[ \t]+(add|remove)[ \t]+(hunger|leech|forced|bias)(?:[ \t]+(chest|arms|core|glutes|legs))?/i],
+  ['support', /:support[ \t]+(on|off)/i],
+  ['look', /:look[ \t]+(curvy|athletic|soft|off)/i],
+  ['pace', /:pace[ \t]+(\d+(?:\.\d+)?)/i],
+  ['reset', /:reset[ \t]+confirm/i],
+  ['inspect', new RegExp(':(?:inspect|scan)(?:[ \\t]+' + PART_RE + ')?\\b', 'i')],
+  ['body', /:body\b/i],
+  ['help', /:help\b/i]
+]
+function parseCommand(text) {
+  for (let i = 0; i < CMD_RE.length; i++) {
+    const m = text.match(CMD_RE[i][1])
+    if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : namesIn(text) }
+  }
+  return null
+}
+const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+function runCommand(cmd) {
+  const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
+  const s = sheetOf(key), m = cmd.m
+  let line = '\n> You take stock of your body.\n', note = ''
+  state.bt_touched = [key]
+  switch (cmd.name) {
+    case 'set': {
+      const k = m[1].toLowerCase()
+      note = STAT_KEYS.indexOf(k) >= 0 ? applyOp(s, k, '=', parseFloat(m[2])) : 'Unknown stat "' + k + '"'
+      break
+    }
+    case 'eat': {
+      const n = Math.min(parseInt(m[1], 10), 5000)
+      s.eaten = (s.eaten || 0) + n
+      note = 'Ate ' + fmt(n) + ' kcal'
+      line = '\n> You eat a meal.\n'
+      break
+    }
+    case 'burn': {
+      const n = Math.min(parseInt(m[1], 10), 3000)
+      s.burned += n
+      note = 'Burned ' + fmt(n) + ' extra kcal'
+      line = '\n> You work out.\n'
+      break
+    }
+    case 'train': {
+      const r = m[1].toLowerCase(), e = m[2] ? parseInt(m[2], 10) : 2
+      s.train[r] = Math.min(4, s.train[r] + e)
+      note = 'Trained ' + RWORD[r] + ' (effort ' + e + ')'
+      line = '\n> You train your ' + RWORD[r] + '.\n'
+      break
+    }
+    case 'day': {
+      const n = m[1] ? parseInt(m[1], 10) : 1
+      note = dayAll(n)
+      state.bt_touched = [''].concat(npcKeys())
+      line = n > 1 ? '\n> You rest while ' + clampN(n, 1, 30) + ' days pass.\n' : '\n> You go to sleep and wake up the next morning.\n'
+      break
+    }
+    case 'gland': {
+      const n = parseInt(m[1], 10)
+      note = applyOp(s, 'gland', '+', n)
+      break
+    }
+    case 'potential': note = applyOp(s, 'potential', '+', parseInt(m[1], 10)); break
+    case 'lactate': s.lact.on = m[1].toLowerCase() === 'on'; note = 'Lactation ' + (s.lact.on ? 'on' : 'off'); break
+    case 'milk': {
+      const req = Math.min(parseInt(m[1], 10), 3000), got = drainMilk(s, req)
+      note = 'Drained ' + Math.round(got) + ' ml'
+      line = '\n> You drain some milk.\n'
+      break
+    }
+    case 'mana': {
+      note = doMana(s, m[1], parseFloat(m[2]), m[3] ? m[3].toLowerCase() : 'all')
+      line = m[1] === '+' ? '\n> You channel mana into your body.\n' : '\n> You spend some mana.\n'
+      break
+    }
+    case 'curse': {
+      note = setCurse(s, m[1].toLowerCase(), m[2].toLowerCase(), m[3] ? m[3].toLowerCase() : '')
+      line = m[1].toLowerCase() === 'add' ? '\n> You feel a curse take hold.\n' : '\n> You feel a curse lift.\n'
+      break
+    }
+    case 'inspect': {
+      const part = m[1] ? PARTS[m[1].toLowerCase()] : 'all'   // :scan on its own inspects everything
+      state.bt_inspect = part
+      state.bt_inspectWho = key
+      note = 'Inspecting ' + part
+      line = part === 'all' ? '\n> You step into the scanner.\n' : '\n> You inspect your ' + (part === 'core' ? 'midsection' : part) + ' closely.\n'
+      break
+    }
+    case 'support': s.support = m[1].toLowerCase() === 'on'; note = 'Support ' + (s.support ? 'on' : 'off'); break
+    case 'look': s.look = m[1].toLowerCase(); note = 'Look: ' + s.look; break
+    case 'pace': s.pace = clampN(parseFloat(m[1]), 0.5, 10); note = 'Growth pace ' + s.pace; break
+    case 'reset': state.bt = newBT(); note = 'Tracker reset'; break
+    case 'sheetadd': {
+      const name = m[1], k = name.toLowerCase()
+      const st = {}, o = {}
+      String(m[2] || '').trim().split(/\s+/).filter(Boolean).forEach((p) => {
+        const kv = p.split('=')
+        const key2 = kv[0].toLowerCase(), val = kv[1]
+        if (key2 === 'pattern' && PATTERNS[val]) o.pattern = val
+        else if (key2 === 'look' && LOOKS.indexOf(val) >= 0) o.look = val
+        else if (CFG.START[key2] !== undefined && !isNaN(parseFloat(val))) st[key2] = parseFloat(val)
+      })
+      o.name = name
+      state.npcs[k] = newBT(st, o)
+      note = 'Added a sheet for ' + name + (Object.keys(st).length ? ' (' + Object.keys(st).map((x) => x + ' ' + st[x]).join(', ') + ')' : '')
+      line = '\n> You take a moment to think about ' + name + '.\n'
+      state.bt_touched = [k]
+      break
+    }
+    case 'sheetremove': {
+      const k = m[1].toLowerCase()
+      if (state.npcs[k]) { note = 'Removed the sheet for ' + state.npcs[k].name; delete state.npcs[k] } else note = 'No sheet for ' + m[1]
+      state.bt_touched = ['']
+      break
+    }
+    case 'sheetlist': note = 'Sheets: You' + npcKeys().map((k) => ', ' + state.npcs[k].name).join('') + (state.bt_hideYou ? ' (your own sheet is hidden)' : ''); state.bt_touched = ['']; break
+    case 'sheetyou': state.bt_hideYou = m[1].toLowerCase() === 'off'; note = 'Your own sheet is ' + (state.bt_hideYou ? 'hidden' : 'shown'); state.bt_touched = ['']; break
+    case 'help': state.bt_help = true; break
+    default: break   // body
+  }
+  const HANDLED = { eat: 'ate', burn: 'burn', train: 'train', day: 'day', milk: 'milk', mana: 'mana', lactate: 'lact', curse: 'curse' }
+  if (HANDLED[cmd.name] && s && s.auto) s.auto[HANDLED[cmd.name]] = true   // so the AI's own tag for it is not counted twice
+  return { line: line, note: (key && note && cmd.name.indexOf('sheet') !== 0 ? labelOf(key) : '') + note, matched: m[0] }
+}
+
+// ---------- text for the AI, the card and the status line ----------
+function aiLine(s) {
+  const notes = []
+  REGIONS.forEach((r) => {
+    const mr = s.mus[r] / s.mus0[r], fr = s.fat[r] / s.fat0[r], w = RWORD[r]
+    if (mr >= 1.12) notes.push([mr - 1, 'muscular ' + w])
+    else if (mr >= 1.04) notes.push([mr - 1, 'toned ' + w])
+    if (fr >= 1.25) notes.push([fr - 1, 'softer ' + w])
+    else if (fr >= 1.08) notes.push([fr - 1, 'slightly fuller ' + w])
+    else if (fr <= 0.75) notes.push([1 - fr, 'leaner ' + w])
+    else if (fr <= 0.92) notes.push([1 - fr, 'slightly slimmer ' + w])
+  })
+  notes.sort((a, b) => b[0] - a[0])
+  const txt = notes.slice(0, 4).map((n) => n[1]).join(', ')
+  return txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : 'No notable changes yet'
+}
+// ---------- shape and size adjectives ----------
+// Each list is [upper limit, word]: the first limit the value falls under gives the word. Edit the words freely.
+// 'average' entries are left out of the description, so it only mentions what stands out.
+const LOOK_WORDS = {
+  height: [[150, 'petite'], [158, 'short'], [168, 'average height'], [177, 'tall'], [184, 'very tall'], [999, 'towering']],   // cm
+  build: [[14, 'very lean'], [19, 'lean'], [24, 'slim'], [30, 'medium'], [35, 'soft'], [41, 'plush'], [48, 'heavyset'], [999, 'very heavyset']],   // body fat %
+  bust: [[2, 'flat'], [3, 'small'], [4, 'modest'], [5, 'full'], [6, 'large'], [8, 'very large'], [10, 'huge'], [99, 'enormous']],   // cup index (A = 2, B = 3, C = 4, D = 5)
+  waist: [[0.66, 'very narrow'], [0.72, 'narrow'], [0.78, 'defined'], [0.85, 'soft'], [0.93, 'thick'], [9, 'wide']],   // waist / hips
+  hips: [[0.50, 'narrow'], [0.56, 'slim'], [0.62, 'average'], [0.68, 'wide'], [0.75, 'very wide'], [9, 'broad']],   // hips / height
+  thigh: [[0.27, 'slender'], [0.31, 'slim'], [0.36, 'average'], [0.41, 'thick'], [0.47, 'very thick'], [9, 'massive']],   // thigh / height
+  arm: [[0.135, 'slender'], [0.155, 'slim'], [0.18, 'average'], [0.21, 'sturdy'], [9, 'thick']]   // upper arm / height
+}
+const tier = (table, v) => {
+  for (let i = 0; i < table.length; i++) { if (v < table[i][0]) return table[i][1] }
+  return table[table.length - 1][1]
+}
+function shapeName(m) {
+  const whr = m.waist / m.hips, diff = (m.bust - m.hips) / m.hips
+  if (whr > 0.85) return 'apple-shaped'
+  if (whr <= 0.76 && Math.abs(diff) <= 0.08) return 'hourglass'
+  if (diff < -0.08) return 'pear-shaped'
+  if (diff > 0.08) return 'inverted-triangle'
+  return 'straight'
+}
+function describeLook(s, m) {
+  const H = m.height, bf = m.bodyfat
+  const wr = (s.mus.legs + s.mus.glutes + 1.3 * s.mus.arms + 1.2 * s.mus.chest + 0.9 * s.mus.core) / (23.01 * Math.pow(H / s.start.height, 2) * (s.start.weight / 60))
+  const prefix = wr >= 1.25 ? 'muscular' : wr >= 1.1 ? 'athletic' : wr >= 1.04 ? 'toned' : ''
+  const build = (prefix ? prefix + ', ' : '') + tier(LOOK_WORDS.build, bf)
+  const cupIdx = clampN(Math.round((m.bust - m.underbust - 7.5) / 2.5), 0, CUPS.length - 1)
+  const extras = []
+  const hw = tier(LOOK_WORDS.hips, m.hips / H), tw = tier(LOOK_WORDS.thigh, m.thigh / H), aw = tier(LOOK_WORDS.arm, m.arm / H)
+  if (hw !== 'average') extras.push(hw + ' hips')
+  if (tw !== 'average') extras.push(tw + ' thighs')
+  if (aw !== 'average') extras.push(aw + ' arms')
+  const lr = s.mus.legs / s.mus0.legs, ar = s.mus.arms / s.mus0.arms
+  if (lr >= 1.12) extras.push('muscular legs'); else if (lr >= 1.04) extras.push('toned legs')
+  if (ar >= 1.12) extras.push('muscular arms'); else if (ar >= 1.06) extras.push('toned arms')
+  const gm = s.mus.glutes / s.mus0.glutes, gf = s.fat.glutes / s.fat0.glutes
+  if (gf >= 1.2) extras.push('full glutes'); else if (gm >= 1.1) extras.push('firm, rounded glutes')
+  const cf = s.fat.core / s.fat0.core, cm = s.mus.core / s.mus0.core
+  if (cf >= 1.25) extras.push('soft belly'); else if (cf <= 0.85 && bf < 22) extras.push('flat stomach')
+  if (cm >= 1.12 && bf < 20) extras.push('defined abs')
+  return 'Look: ' + tier(LOOK_WORDS.height, H) + ', ' + build + ' ' + shapeName(m) + ' figure; ' + tier(LOOK_WORDS.bust, cupIdx) + ' bust; ' +
+    tier(LOOK_WORDS.waist, m.waist / m.hips) + ' waist' + (extras.length ? '; ' + extras.join(', ') : '')
+}
+
+// ---------- inspecting one body part ----------
+function inspectPart(s, part) {
+  const m = measures(s), a = abilities(s, m), H = m.height
+  const dl = (v, base, dec) => (Math.abs(v - base) < 0.005 ? '' : ' (' + sgn(v - base) + (dec === 2 ? r2(v - base) : r1(v - base)) + ')')
+  const musFat = (r) => 'muscle ' + r2(s.mus[r]) + ' kg' + dl(s.mus[r], s.mus0[r], 2) + ', fat ' + r2(s.fat[r]) + ' kg' + dl(s.fat[r], s.fat0[r], 2)
+  const mana = (r) => 'Mana ' + Math.round(s.mana[r]) + ' of ' + Math.round(manaCap(s, r)) + '.'
+  if (part === 'chest') {
+    const c = chestCalc(s), V = c.V
+    const cupIdx = clampN(Math.round((m.bust - m.underbust - 7.5) / 2.5), 0, CUPS.length - 1)
+    let t = 'Chest inspection: ' + tier(LOOK_WORDS.bust, cupIdx) + ' bust, bra ' + cup(m) + ' (bust ' + r1(m.bust) + ' cm over underbust ' + r1(m.underbust) + ' cm). Each breast about ' + Math.round(V.total) + ' cc: glandular ' +
+      Math.round(V.gland) + ' cc (' + Math.round(c.g * 100) + '% of tissue), fat ' + Math.round(V.fat) + ' cc (' + Math.round(V.fat / V.tissue * 100) + '%)' + (V.milk > 1 ? ', milk ' + Math.round(V.milk) + ' cc' : '') +
+      '. ' + firmWord(c.firm).charAt(0).toUpperCase() + firmWord(c.firm).slice(1) + ' (firmness ' + Math.round(c.firm) + ' of 100), ' + sagWord(s.sag) + ' (sag ' + r1(s.sag) + ' of 3). Chest ' + musFat('chest') + '. '
+    if (lactActive(s) || s.lact.stored > 1) t += 'Milk ' + Math.round(s.lact.stored) + ' of ' + Math.round(milkCap(s)) + ' ml stored, supply ' + Math.round(s.lact.sup * 100) + '%. '
+    return t + mana('chest') + ' Glandular tissue can grow to about ' + Math.round(glandCeil(s)) + ' cc.'
+  }
+  if (part === 'arms') return 'Arm inspection: ' + tier(LOOK_WORDS.arm, m.arm / H) + ' arms, upper arm ' + r1(m.arm) + ' cm. Arms ' + musFat('arms') + '. ' + mana('arms') + ' Strength ' + a.str.score + '.'
+  if (part === 'core') return 'Core inspection: ' + tier(LOOK_WORDS.waist, m.waist / m.hips) + ' waist, ' + r1(m.waist) + ' cm (waist to hip ' + r2(m.waist / m.hips) + '). Core ' + musFat('core') + '. ' + mana('core') + (s.fat.core / s.fat0.core >= 1.25 ? ' The belly is soft and rounded.' : s.fat.core / s.fat0.core <= 0.85 ? ' The stomach is flat.' : '')
+  if (part === 'glutes') return 'Hip and glute inspection: ' + tier(LOOK_WORDS.hips, m.hips / H) + ' hips, ' + r1(m.hips) + ' cm. Glutes ' + musFat('glutes') + '. ' + mana('glutes') + (s.fat.glutes / s.fat0.glutes >= 1.2 ? ' Noticeably full.' : s.mus.glutes / s.mus0.glutes >= 1.1 ? ' Firm and rounded.' : '')
+  if (part === 'legs') return 'Leg inspection: ' + tier(LOOK_WORDS.thigh, m.thigh / H) + ' thighs, ' + r1(m.thigh) + ' cm around. Legs ' + musFat('legs') + '. ' + mana('legs') + ' Dexterity ' + a.dex.score + '.'
+  return 'Full inspection: ' + describeLook(s, m).replace(/^Look: /, '') + '. ' + r1(m.height) + ' cm, ' + r1(m.weight) + ' kg, body fat ' + r1(m.bodyfat) + '%, muscle ' + r1(sum(s.mus)) + ' kg, bra ' + cup(m) + '. Stats: ' + statLine(a) + '.'
+}
+function detectInspect(text) {
+  const toks = tokensOf(text)
+  const vi = findTok(toks, ['inspect', 'examine', 'scan', 'check', 'study', 'measure', 'look', 'see', 'view'])
+  if (vi >= 0) {
+    const strongVerb = findTok(toks, ['inspect', 'examine', 'scan', 'check', 'study', 'measure']) >= 0
+    const words = Object.keys(PARTS).filter((w) => strongVerb || (w !== 'all' && w !== 'body'))   // "look at" only counts for a specific part
+    for (let i = vi + 1; i < Math.min(toks.length, vi + 6); i++) {
+      for (let k = 0; k < words.length; k++) {
+        if (near(toks[i], words[k])) return PARTS[words[k]]
+      }
+    }
+  }
+  if (/\b(?:step|walk|stand|get)\w*\s+(?:into|in|under|inside)\s+the\s+(?:body\s+)?scanner\b/.test(normText(text))) return 'all'
+  return ''
+}
+
+function extraAI(s) {
+  const parts = [], L = s.lact
+  if (lactActive(s) || L.stored > 1) parts.push('Milk ' + Math.round(L.stored / Math.max(1, milkCap(s)) * 100) + '% full' + (lactActive(s) ? ', lactating' : ''))
+  const mf = fillOf(s, REGIONS)
+  if (mf > 0.05) parts.push('Mana ' + Math.round(mf * 100) + '%')
+  const cs = []
+  if (s.curses.hunger) cs.push('hunger')
+  if (s.curses.leech) cs.push('mana leech (' + RWORD[s.curses.leech] + ')')
+  if (s.curses.forced) cs.push('forced milk')
+  if (s.curses.bias) cs.push('growth bias (' + RWORD[s.curses.bias] + ')')
+  if (cs.length) parts.push('Cursed: ' + cs.join(', '))
+  return parts.length ? ' ' + parts.join('. ') + '.' : ''
+}
+function aiSummary(s, label) {
+  const m = measures(s), a = abilities(s, m), c = chestCalc(s)
+  return (label ? label : 'Body') + ': ' + r1(m.height) + ' cm, ' + r1(m.weight) + ' kg, ' + Math.round(m.bodyfat) + '% fat, bra ' + cup(m) + '. ' + (CFG.DESCRIBE ? describeLook(s, m) + '. ' : '') + (aiLine(s) === 'No notable changes yet' ? '' : aiLine(s) + '. ') +
+    'Chest: about ' + Math.round(c.V.total) + ' cc each, ' + firmWord(c.firm) + ', ' + sagWord(s.sag) +
+    '.' + extraAI(s) + ' Ate ' + fmt(s.eaten || 0) + ' of ' + fmt(need(s, m, s.burned)) + ' kcal today. Stats: ' + statLine(a) + '.'
+}
+function refreshMemory(recent) {
+  const s = state.bt
+  state.memory = state.memory || {}
+  let note = state.bt_hideYou ? '' : '[' + aiSummary(s) + ']'
+  // other tracked characters are described only while their name is in the recent story
+  const mentioned = namesIn(recent || '')
+  if (state.bt_hideYou && defKey() && mentioned.indexOf(defKey()) < 0) mentioned.unshift(defKey())   // the main character is always described
+  mentioned.slice(0, CFG.NPC_MAX).forEach((k) => { note += ' [' + aiSummary(state.npcs[k], state.npcs[k].name) + ']' })
+  if (note) note += ' [Never invent body measurements or changes; use only these numbers.]'
+  if (state.bt_inspect) {
+    const who = state.bt_inspectWho || '', t = sheetOf(who)
+    if (t) note += ' [Describe this in detail using only these facts: ' + (who ? t.name + ': ' : '') + inspectPart(t, state.bt_inspect) + ']'
+  }
+  state.memory.authorsNote = note.trim()
+  // the tag reminder goes at the very end of the context, where the AI pays the most attention
+  if (CFG.TAG_HELP) {
+    const F = CFG.FEATURES
+    let t = '[Hidden tags: after any eating, exercise or sleeping, end your reply with tags and never mention them: [ate 600] kcal eaten, [burn 300] hard exercise, [train legs 2] (chest, arms, core, glutes, legs), [day] when a new day begins, [gland +20] or [bust +2] for magic only'
+    if (F.milk) t += ', [lactating on] or [lactating off], [milk -300] drained'
+    if (F.mana) t += ', [mana +30 arms] infused, [mana -20] spent'
+    if (F.curses) t += ', [curse add hunger]'
+    t += '.'
+    const names = npcKeys().map((k) => state.npcs[k].name)
+    if (names.length) t += ' Also tracked: ' + names.join(', ') + '. When a tag is about them, put their name last, like [ate 300 ' + names[0] + '].'
+    state.memory.frontMemory = t + ']'
+  } else {
+    state.memory.frontMemory = ''
+  }
+}
+function sheetText(s, label) {
+  const m = measures(s), a = abilities(s, m), c = chestCalc(s)
+  const list = (o) => REGIONS.map((r) => r + ' ' + r1(o[r])).join(', ')
+  return 'BODY SHEET' + (label ? ': ' + label : '') + ' (updated by the script)\n' +
+    'Day: ' + s.day + '\n' +
+    'Height: ' + r1(m.height) + ' cm\n' +
+    'Weight: ' + r1(m.weight) + ' kg\n' +
+    'Body fat: ' + r1(m.bodyfat) + ' %\n' +
+    'Bust: ' + r1(m.bust) + ' cm\n' +
+    'Underbust: ' + r1(m.underbust) + ' cm\n' +
+    'Waist: ' + r1(m.waist) + ' cm\n' +
+    'Hips: ' + r1(m.hips) + ' cm\n' +
+    'Arm: ' + r1(m.arm) + ' cm\n' +
+    'Thigh: ' + r1(m.thigh) + ' cm\n' +
+    'Bra: ' + cup(m) + '\n' +
+    describeLook(s, m) + '\n' +
+    'Glandular cc: ' + r1(s.gland) + '\n' +
+    'Breast cc each: ' + Math.round(c.V.total) + ' (fat ' + Math.round(c.V.fat) + ')\n' +
+    'Firmness: ' + Math.round(c.firm) + '\n' +
+    'Sag: ' + r1(s.sag) + '\n' +
+    'Potential cc: ' + r1(s.glandMax) + '\n' +
+    'Milk ml: ' + Math.round(s.lact.stored) + ' / ' + Math.round(milkCap(s)) + ' (' + (lactActive(s) ? 'lactating' : 'not lactating') + ', supply ' + Math.round(s.lact.sup * 100) + '%)\n' +
+    'Mana: ' + Math.round(REGIONS.reduce((t, r) => t + s.mana[r], 0)) + ' / ' + Math.round(REGIONS.reduce((t, r) => t + manaCap(s, r), 0)) + '\n' +
+    'Curses: ' + ([s.curses.hunger && 'hunger', s.curses.leech && 'leech ' + s.curses.leech, s.curses.forced && 'forced milk', s.curses.bias && 'bias ' + s.curses.bias].filter(Boolean).join(', ') || 'none') + '\n' +
+    'Stats: ' + statLine(a) + '\n' +
+    'Muscle kg: ' + list(s.mus) + '\n' +
+    'Fat kg: ' + list(s.fat) + '\n' +
+    'Kcal today: ' + fmt(s.eaten || 0) + ' / ' + fmt(need(s, m, s.burned))
+}
+function sheetLine(s, label) {
+  const m = measures(s), a = abilities(s, m)
+  return (label ? label + ' | ' : '') + 'Day ' + s.day + ' | ' + r1(m.height) + ' cm, ' + r1(m.weight) + ' kg, ' + r1(m.bodyfat) + '% fat | bra ' + cup(m) +
+    ', ' + Math.round(volume(s).total) + ' cc each | ' + statLine(a) + ' | ' + fmt(s.eaten || 0) + '/' + fmt(need(s, m, s.burned)) + ' kcal'
+}
+function statusLine(notes) {
+  let touched = (state.bt_touched && state.bt_touched.length) ? state.bt_touched : [defKey()]
+  touched = touched.filter((k, i) => touched.indexOf(k) === i && sheetOf(k))
+  if (!touched.length) touched = [defKey()]
+  const lines = touched.map((k) => '[' + sheetLine(sheetOf(k), k ? state.npcs[k].name : ''))
+  let first = lines[0]
+  if (state.bt_note) first += ' | ' + state.bt_note
+  if (notes && notes.length) first += ' | ' + notes.join(', ')
+  lines[0] = first
+  let t = lines.map((l) => l + ']').join('\n')
+  if (state.bt_help) t += '\n' + HELP
+  return t
+}
+
+// ---------- story card mirror ----------
+function writeCard() {
+  const cards = typeof storyCards !== 'undefined' ? storyCards : []
+  const put = (keys, entry) => {
+    let idx = -1
+    for (let i = 0; i < cards.length; i++) { if (cards[i].type === CARD_TYPE && cards[i].keys === keys) { idx = i; break } }
+    if (idx === -1) addStoryCard(keys, entry, CARD_TYPE)
+    else updateStoryCard(idx, keys, entry, CARD_TYPE)
+  }
+  if (!state.bt_hideYou) {
+    const entry = sheetText(state.bt)
+    put(CARD_KEYS, entry)
+    state.bt_cardPrev = state.bt_card
+    state.bt_card = entry
+  } else if (typeof removeStoryCard === 'function') {   // your own sheet is hidden: take its card away
+    for (let i = cards.length - 1; i >= 0; i--) { if (cards[i].type === CARD_TYPE && cards[i].keys === CARD_KEYS) removeStoryCard(i) }
+  }
+  npcKeys().forEach((k) => put(CARD_KEYS + '-' + k, sheetText(state.npcs[k], state.npcs[k].name)))
+  // drop cards of characters that were removed
+  if (typeof removeStoryCard === 'function') {
+    for (let i = cards.length - 1; i >= 0; i--) {
+      const kk = cards[i].keys
+      if (cards[i].type === CARD_TYPE && typeof kk === 'string' && kk.indexOf(CARD_KEYS + '-') === 0 && !state.npcs[kk.slice(CARD_KEYS.length + 1)]) removeStoryCard(i)
+    }
+  }
+}
+const CARD_LINES = { 'height': 'height', 'weight': 'weight', 'body fat': 'bodyfat', 'bust': 'bust', 'underbust': 'underbust', 'waist': 'waist', 'hips': 'hips', 'arm': 'arm', 'thigh': 'thigh', 'glandular cc': 'gland', 'potential cc': 'potential', 'sag': 'sag' }
+function cardValues(str) {
+  const out = {}
+  String(str).split('\n').forEach((line) => {
+    const m = line.match(/^([A-Za-z ]+):\s*(-?\d+(?:\.\d+)?)/)
+    if (m && CARD_LINES[m[1].trim().toLowerCase()]) out[CARD_LINES[m[1].trim().toLowerCase()]] = parseFloat(m[2])
+  })
+  return out
+}
+function readCard() {
+  if (!CFG.CARD_READBACK || !state.bt_card) return
+  const cards = typeof storyCards !== 'undefined' ? storyCards : []
+  for (let i = 0; i < cards.length; i++) {
+    if (cards[i].type !== CARD_TYPE) continue
+    const entry = cards[i].entry
+    if (entry === state.bt_card || entry === state.bt_cardPrev) return   // unchanged (or our write is still catching up)
+    const was = cardValues(state.bt_card), now = cardValues(entry)
+    Object.keys(now).forEach((k) => { if (was[k] !== undefined && Math.abs(now[k] - was[k]) > 0.049) setValue(state.bt, k, now[k]) })
+    return
+  }
+}

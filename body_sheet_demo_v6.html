@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Body sheet demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Almendra:wght@400;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #E9E7F3; --panel: #F7F6FC; --panel2: #ECEAF7; --ink: #1F1D33; --muted: #5F5C7C;
+  --line: #CFCBE3; --brass: #8F6210; --on-brass: #FFFFFF; --teal: #1B7A6C; --rose: #B23A57;
+  --figure: #8A7BCB; --figure-hi: #A79BE0; --figure-dark: #6455A8; --figure-edge: #4A3D8A; --guide: #8F6210; --mana: #2F6FD6; --milk: #8FA3C7;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16152A; --panel: #211F3B; --panel2: #2A2848; --ink: #ECEAF7; --muted: #A7A4C6;
+    --line: #3A3760; --brass: #E0B354; --on-brass: #16152A; --teal: #5CC4B4; --rose: #F08CA0;
+    --figure: #9A88DE; --figure-hi: #C0B3F2; --figure-dark: #7A68C8; --figure-edge: #6F5DC0; --guide: #E0B354; --mana: #7DB3FF; --milk: #C9D8F2;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #16152A; --panel: #211F3B; --panel2: #2A2848; --ink: #ECEAF7; --muted: #A7A4C6;
+  --line: #3A3760; --brass: #E0B354; --on-brass: #16152A; --teal: #5CC4B4; --rose: #F08CA0;
+  --figure: #9A88DE; --figure-hi: #C0B3F2; --figure-dark: #7A68C8; --figure-edge: #6F5DC0; --guide: #E0B354; --mana: #7DB3FF; --milk: #C9D8F2;
+}
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font-family: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px; line-height: 1.45;
+}
+main { max-width: 1080px; margin: 0 auto; padding: 20px 16px 48px; }
+h1, h2, .display { font-family: "Almendra", Georgia, "Times New Roman", serif; font-weight: 700; }
+h1 { font-size: 34px; margin: 0 0 4px; letter-spacing: 0.01em; }
+h2 { font-size: 20px; margin: 0 0 10px; }
+.intro { color: var(--muted); margin: 0 0 20px; max-width: 64ch; }
+.stage { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; }
+.figure { position: sticky; top: 12px; padding: 12px 8px 8px; }
+.figure svg { display: block; width: 100%; height: auto; }
+.tape { stroke: var(--guide); stroke-width: 1; stroke-dasharray: 3 3; opacity: .85; }
+.tape-label { fill: var(--guide); font-size: 11px; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+.fig-cap { fill: var(--muted); font-size: 12px; font-family: "Atkinson Hyperlegible", system-ui, sans-serif; }
+.ground { stroke: var(--line); stroke-width: 1.5; }
+.shadow { fill: var(--figure-edge); opacity: .18; }
+.side { display: grid; gap: 16px; min-width: 0; }
+.plates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.plate { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.plate .k { color: var(--muted); font-size: 13px; }
+.plate .v { font-family: "Almendra", Georgia, serif; font-size: 26px; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.plate .d { color: var(--muted); font-size: 12px; min-height: 1.4em; }
+.plate.hero { border-color: var(--brass); }
+.abgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ab { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.ab .an { font-size: 13px; color: var(--muted); }
+.ab .as { font-family: "Almendra", Georgia, serif; font-size: 32px; font-weight: 700; line-height: 1.1; display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+.ab .am { font-family: "Atkinson Hyperlegible", system-ui, sans-serif; font-size: 13px; font-weight: 700; border: 1px solid var(--brass); color: var(--brass); border-radius: 999px; padding: 1px 8px; }
+.ab .ad { font-size: 12px; color: var(--muted); }
+.ab .aw { font-size: 12px; color: var(--muted); margin-top: 4px; border-top: 1px solid var(--line); padding-top: 4px; }
+.cgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px; }
+.mix { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--panel2); margin: 6px 0 4px; }
+.mix span { transition: width .4s ease; }
+.mix .g { background: var(--rose); } .mix .f { background: var(--brass); } .mix .o { background: var(--muted); opacity: .5; } .mix .k { background: var(--milk); }
+.rbar .a { background: var(--mana); transition: width .4s ease; }
+.curse { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.curse:last-of-type { border-bottom: 0; }
+.curse b { display: block; }
+.curse span { color: var(--muted); font-size: 13px; }
+.legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin: -4px 0 10px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.reg { display: grid; grid-template-columns: 64px 1fr; gap: 4px 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.reg:last-child { border-bottom: 0; }
+.reg .rn { font-weight: 700; font-size: 15px; }
+.rbar { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--panel2); }
+.rbar .m { background: var(--teal); transition: width .4s ease; }
+.rbar .f { background: var(--brass); transition: width .4s ease; }
+.rv { grid-column: 2; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rv b { color: var(--ink); font-weight: 700; }
+.bar-wrap { position: relative; height: 18px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--line); overflow: hidden; }
+.bar-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--teal); transition: width .4s ease, background-color .4s ease; }
+.bar-mark { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); opacity: .7; }
+.bar-text { margin: 8px 0 12px; font-size: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.row .lbl { width: 62px; color: var(--muted); font-size: 14px; }
+button, select, input {
+  font: inherit; color: var(--ink); background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 7px 12px; min-height: 38px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--brass); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--brass); color: var(--on-brass); border-color: var(--brass); font-weight: 700; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+input[type="number"] { width: 96px; }
+.lower { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+.spark { margin-bottom: 12px; }
+.spark .cap { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
+.spark svg { width: 100%; height: 52px; display: block; }
+ul.log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+ul.log li { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+ul.log li:last-child { border-bottom: 0; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code.tag { display: inline-block; margin-top: 3px; font-size: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 6px; color: var(--brass); }
+pre.sheet { margin: 0; padding: 12px; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; line-height: 1.5; overflow-x: auto; white-space: pre-wrap; }
+.note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.empty { color: var(--muted); font-size: 14px; }
+.stack { display: grid; gap: 16px; align-content: start; }
+@media (max-width: 820px) {
+  .stage { grid-template-columns: 1fr; }
+  .figure { position: static; max-width: 380px; margin: 0 auto; width: 100%; }
+  .lower { grid-template-columns: 1fr; }
+  .plates { grid-template-columns: repeat(2, 1fr); }
+  .abgrid { grid-template-columns: repeat(2, 1fr); }
+  .cgrid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-fill, .rbar .m, .rbar .f, .rbar .a, .mix span { transition: none; }
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Body sheet</h1>
+  <p class="intro">A demo of the tracker: body areas, tabletop ability scores, milk, mana and curses. Each button does what the AI's hidden tags or your commands would do in the script. Fat and muscle are tracked per body part, so training and eating change different areas. Nothing here touches AI Dungeon.</p>
+
+  <section class="stage">
+    <div class="card figure">
+      <svg id="fig" viewBox="0 0 400 452" role="img" aria-label="Body silhouette"></svg>
+    </div>
+
+    <div class="side">
+      <div class="plates" id="plates"></div>
+
+      <div class="card">
+        <h2>Chest detail</h2>
+        <div class="cgrid" id="chestTiles"></div>
+        <div class="legend"><span><i style="background:var(--rose)"></i>Glandular</span><span><i style="background:var(--brass)"></i>Fat</span><span><i style="background:var(--muted);opacity:.5"></i>Other</span><span><i style="background:var(--milk)"></i>Milk</span></div>
+        <div class="mix" id="chestMix" aria-hidden="true"></div>
+        <div class="bar-text" id="chestText"></div>
+        <div class="row">
+          <button class="ctl" data-gland="20">Glandular +20 cc</button>
+          <button class="ctl" data-gland="-20">Glandular \u221220 cc</button>
+          <button class="ctl" id="liftBtn">Lift (sag \u22120.5)</button>
+        </div>
+        <div class="row"><span class="lbl" style="width:auto">Support</span>
+          <select class="ctl" id="support" aria-label="Bra support">
+            <option value="1" selected>Supportive bra</option><option value="0">No support</option>
+          </select>
+        </div>
+        <p class="note">Sizes are per breast. Fat follows your calories and your fat pattern. Glandular tissue does not respond to food or training, only to the story. Sag builds from fast changes and from heavy volume, and support halves it.</p>
+      </div>
+
+      <div class="card">
+        <h2>Milk</h2>
+        <div class="cgrid" id="milkTiles"></div>
+        <div class="bar-wrap" aria-hidden="true"><div class="bar-fill" id="milkFill" style="background:var(--milk)"></div></div>
+        <div class="bar-text" id="milkText"></div>
+        <div class="row">
+          <button class="ctl" id="lactBtn">Start lactating</button>
+          <button class="ctl" data-milk="200">Drain 200 ml</button>
+          <button class="ctl" data-milk="500">Drain 500 ml</button>
+          <button class="ctl" id="drainAll">Drain all</button>
+        </div>
+        <div class="row"><span class="lbl" style="width:auto">Potential</span>
+          <button class="ctl" data-pot="30">+30 cc</button>
+          <button class="ctl" data-pot="-30">\u221230 cc</button>
+        </div>
+        <p class="note">Supply follows how much you drain, up to what the glandular tissue can make. Draining more often than the tissue supports (over about 90% of full output) makes it grow slowly toward its potential. After a week of low demand it shrinks slowly back to where it started. Producing milk costs about 0.8 kcal per ml, and full breasts leak, slow down and add sag strain.</p>
+      </div>
+
+      <div class="card">
+        <h2>Mana</h2>
+        <div id="manaRows"></div>
+        <div class="row">
+          <select class="ctl" id="manaTarget" aria-label="Where to infuse or spend mana"></select>
+          <input class="ctl" id="manaAmt" type="number" value="30" min="1" aria-label="Amount of mana">
+          <button class="ctl" id="infuseBtn">Infuse</button>
+          <button class="ctl" id="spendBtn">Spend</button>
+        </div>
+        <p class="note">Each area stores mana in its muscle, fat and glandular cells, with glandular tissue holding by far the most per kg. Half of it fades every day, and anything past capacity is wasted. Filled areas glow blue on the figure and give temporary ability bonuses: Strength from arms, chest and legs, Dexterity from core and glutes, and a smaller boost to Constitution, Intelligence and Wisdom from the total.</p>
+      </div>
+
+      <div class="card">
+        <h2>Curses</h2>
+        <div class="curse"><div><b>Hunger</b><span>Needs 25% more calories every day.</span></div><button class="ctl" id="curHunger">Add</button></div>
+        <div class="curse"><div><b>Mana leech</b><span>Soaks mana into one area every day. Overflow turns into lasting tissue.</span></div><div class="row" style="margin:0"><select class="ctl" id="leechTarget" aria-label="Leech area"></select><button class="ctl" id="curLeech">Add</button></div></div>
+        <div class="curse"><div><b>Forced milk</b><span>Lactation stays on, supply never drops below 60%, and the glandular ceiling is 50% higher.</span></div><button class="ctl" id="curForced">Add</button></div>
+        <div class="curse"><div><b>Growth bias</b><span>New fat lands mostly in one area, and it leaves that area last.</span></div><div class="row" style="margin:0"><select class="ctl" id="biasTarget" aria-label="Bias area"></select><button class="ctl" id="curBias">Add</button></div></div>
+      </div>
+
+      <div class="card">
+        <h2>Abilities</h2>
+        <div class="abgrid" id="abilities"></div>
+        <p class="note">Tabletop scale: 10 is average and every 2 points is one step of modifier. Strength, Dexterity, Constitution and Charisma come from the body. Intelligence and Wisdom come from the story.</p>
+      </div>
+
+      <div class="card">
+        <h2>Where it goes</h2>
+        <div class="legend"><span><i style="background:var(--teal)"></i>Muscle</span><span><i style="background:var(--brass)"></i>Fat</span></div>
+        <div id="regions"></div>
+        <p class="note">The figure glows teal where muscle just grew and brass where fat just landed.</p>
+      </div>
+
+      <div class="card">
+        <h2>Today, day <span id="dayNum">1</span></h2>
+        <div class="bar-wrap" aria-hidden="true"><div class="bar-fill" id="barFill"></div><div class="bar-mark" id="barMark"></div></div>
+        <div class="bar-text" id="barText"></div>
+
+        <div class="row"><span class="lbl">Eat</span>
+          <button class="ctl" data-eat="150" data-name="a snack">Snack 150</button>
+          <button class="ctl" data-eat="650" data-name="a meal">Meal 650</button>
+          <button class="ctl" data-eat="1400" data-name="a feast">Feast 1400</button>
+        </div>
+        <div class="row"><span class="lbl"></span>
+          <input class="ctl" id="eatCustom" type="number" min="1" max="5000" placeholder="kcal" aria-label="Custom kcal eaten">
+          <button class="ctl" id="eatCustomBtn">Add food</button>
+        </div>
+        <div class="row"><span class="lbl">Move</span>
+          <button class="ctl" data-burn="200" data-name="a long walk">Walk 200</button>
+          <button class="ctl" data-burn="500" data-name="a hard workout">Workout 500</button>
+        </div>
+        <div class="row"><span class="lbl">Effort</span>
+          <select class="ctl" id="effort" aria-label="Training effort">
+            <option value="1">Light</option><option value="2" selected>Normal</option><option value="3">Hard</option>
+          </select>
+        </div>
+        <div class="row"><span class="lbl">Train</span>
+          <button class="ctl" data-train="chest">Chest</button>
+          <button class="ctl" data-train="arms">Arms</button>
+          <button class="ctl" data-train="core">Core</button>
+          <button class="ctl" data-train="glutes">Glutes</button>
+          <button class="ctl" data-train="legs">Legs</button>
+        </div>
+        <div class="row"><span class="lbl">Story</span>
+          <button class="ctl" data-story="int:1:Studied a book">Study +1 INT</button>
+          <button class="ctl" data-story="wis:1:Took a quiet moment">Reflect +1 WIS</button>
+          <button class="ctl" data-story="cha:2:Got a blessing">Blessing +2 CHA</button>
+          <button class="ctl" data-story="str:2:Drank a potion">Potion +2 STR</button>
+        </div>
+        <div class="row"><span class="lbl">Time</span>
+          <button class="ctl primary" id="endDay">End day</button>
+          <button class="ctl" id="skipWeek">Skip 7 days</button>
+        </div>
+        <div class="row"><span class="lbl">Try</span>
+          <button class="ctl" id="simSurplus">Week of 2,900 kcal</button>
+          <button class="ctl" id="simDeficit">Week of 1,500 kcal</button>
+        </div>
+        <div class="row"><span class="lbl"></span>
+          <button class="ctl" id="simLower">Lower body week</button>
+          <button class="ctl" id="simUpper">Upper body week</button>
+        </div>
+        <p class="note">The training weeks lift 4 days with 2,400 kcal a day and burn 300 on lifting days.</p>
+      </div>
+
+      <div class="card">
+        <h2>Set and tune</h2>
+        <div class="row">
+          <select class="ctl" id="setKey" aria-label="Stat to set"></select>
+          <input class="ctl" id="setVal" type="number" step="0.1" placeholder="value" aria-label="New value">
+          <button class="ctl" id="setBtn">Set stat</button>
+        </div>
+        <div class="row"><span class="lbl">Fat goes</span>
+          <select class="ctl" id="pattern" aria-label="Fat pattern">
+            <option value="pear">Hips and legs first</option>
+            <option value="apple">Middle first</option>
+            <option value="even">Evenly</option>
+          </select>
+          <span class="note" style="margin:0">Changing this restarts the demo.</span>
+        </div>
+        <div class="row"><span class="lbl">Look</span>
+          <select class="ctl" id="look" aria-label="Character's look">
+            <option value="curvy" selected>Curvy</option>
+            <option value="athletic">Athletic</option>
+            <option value="soft">Soft</option>
+            <option value="off">No body bonus</option>
+          </select>
+          <span class="note" style="margin:0">Decides which body Charisma rewards.</span>
+        </div>
+        <div class="row"><span class="lbl">Pace</span>
+          <select class="ctl" id="pace" aria-label="Muscle growth pace">
+            <option value="1">Realistic</option>
+            <option value="3" selected>Game pace (3 times faster)</option>
+          </select>
+          <button class="ctl" id="resetBtn">Start over</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="lower">
+    <div class="stack">
+      <div class="card">
+        <h2>Over the days</h2>
+        <div class="spark"><div class="cap"><span>Weight</span><span id="wCap"></span></div><svg id="wSpark" viewBox="0 0 200 52" preserveAspectRatio="none"></svg></div>
+        <div class="spark"><div class="cap"><span>Body fat</span><span id="fCap"></span></div><svg id="fSpark" viewBox="0 0 200 52" preserveAspectRatio="none"></svg></div>
+        <div class="spark"><div class="cap"><span>Muscle</span><span id="mCap"></span></div><svg id="mSpark" viewBox="0 0 200 52" preserveAspectRatio="none"></svg></div>
+      </div>
+      <div class="card">
+        <h2>Log</h2>
+        <ul class="log" id="log"></ul>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <h2>What the AI is told</h2>
+        <pre class="sheet" id="aiText"></pre>
+        <p class="note">Short descriptions instead of a wall of numbers, which keeps the context small on the free tier.</p>
+      </div>
+      <div class="card">
+        <h2>Story card preview</h2>
+        <pre class="sheet" id="cardText"></pre>
+        <p class="note">One value per line, so hand edits can be read back by the script.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const STATS = {
+  height:    { label: 'Height',    unit: 'cm', min: 50, max: 190, start: 165 },
+  weight:    { label: 'Weight',    unit: 'kg', min: 20, max: 300, start: 60 },
+  bodyfat:   { label: 'Body fat',  unit: '%',  min: 4,  max: 70,  start: 26 },
+  underbust: { label: 'Underbust', unit: 'cm', min: 40, max: 200, start: 74 },
+  bust:      { label: 'Bust',      unit: 'cm', min: 45, max: 250, start: 89 },
+  waist:     { label: 'Waist',     unit: 'cm', min: 30, max: 250, start: 70 },
+  hips:      { label: 'Hips',      unit: 'cm', min: 45, max: 250, start: 95 },
+  arm:       { label: 'Upper arm', unit: 'cm', min: 15, max: 70,  start: 27 },
+  thigh:     { label: 'Thigh',     unit: 'cm', min: 30, max: 110, start: 55 }
+};
+const MEAS = ['underbust', 'bust', 'waist', 'hips', 'arm', 'thigh'];
+const REGIONS = ['chest', 'arms', 'core', 'glutes', 'legs'];
+const RNAME = { chest: 'Chest', arms: 'Arms', core: 'Core', glutes: 'Glutes', legs: 'Legs' };
+const RWORD = { chest: 'chest', arms: 'arms', core: 'midsection', glutes: 'glutes', legs: 'legs' };
+const MUS_START = { chest: 2.0, arms: 3.2, core: 3.5, glutes: 3.8, legs: 9.5 };
+// where new fat lands (shares add up to 1); fat loss uses the inverse, so these areas empty last
+const PATTERNS = {
+  pear:  { chest: .12, arms: .12, core: .22, glutes: .24, legs: .30 },
+  apple: { chest: .16, arms: .12, core: .38, glutes: .16, legs: .18 },
+  even:  { chest: .20, arms: .20, core: .20, glutes: .20, legs: .20 }
+};
+// cm change per kg of regional fat / muscle
+const COEF = {
+  underbust: { fat: { chest: 2.0, core: 0.7 },   mus: { chest: 3.0 } },
+  waist:     { fat: { core: 4.5 },               mus: { core: 0.8 } },
+  hips:      { fat: { glutes: 2.6, legs: 0.6 },  mus: { glutes: 2.0, legs: 0.5 } },
+  arm:       { fat: { arms: 2.5 },               mus: { arms: 4.5 } },
+  thigh:     { fat: { legs: 2.2 },               mus: { legs: 2.2 } }
+};
+const AB = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+const ABNAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+const LOOKS = { curvy: 'Curvy', athletic: 'Athletic', soft: 'Soft', off: 'No body bonus' };
+const modOf = (s) => Math.floor((s - 10) / 2);
+const modTxt = (s) => { const m = modOf(s); return (m >= 0 ? '+' : '\u2212') + Math.abs(m); };
+const BREAST_FAT_SHARE = 0.25;  // share of chest-area fat that sits in the breasts
+const FAT_G_PER_CC = 0.92, CONN_CC = 20, GLAND_START = 90;
+const MANA_DECAY = 0.5, MILK_KCAL_PER_ML = 0.8;
+const MANA_PER_KG = { mus: 8, fat: 3, gland: 150 };
+const ACTIVITY = 1.35, KCAL_PER_KG = 7700, FAT_GAIN = 0.75, FAT_LOSS = 0.8;
+const PCT_PER_POINT = 0.0011;   // muscle growth per training point per day, as a share of that muscle
+const MUSCLE_CEILING = 0.6;     // a region can grow about 60% over its starting muscle
+const CUPS = ['AAA','AA','A','B','C','D','DD','E','F','G','H','I','J','K'];
+const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const $ = (id) => document.getElementById(id);
+const r1 = (v) => Math.round(v * 10) / 10;
+const r2 = (v) => Math.round(v * 100) / 100;
+const fmt = (n) => Math.round(n).toLocaleString('en-US');
+const sum = (o) => REGIONS.reduce((t, r) => t + o[r], 0);
+const clampStat = (k, v) => Math.min(STATS[k].max, Math.max(STATS[k].min, v));
+const clampN = (v, a, b) => Math.min(b, Math.max(a, v));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const zero = () => ({ chest: 0, arms: 0, core: 0, glutes: 0, legs: 0 });
+const signed = (v, d) => (v >= 0 ? '+' : '') + (d === 2 ? r2(v) : r1(v));
+
+let S = null, M = null, A = null, disp = null, start = null, busy = false, raf = null;
+
+// breast volume per breast, in cc
+function volume() {
+  const fat = S.fat.chest * BREAST_FAT_SHARE * 1000 / FAT_G_PER_CC / 2;
+  const tissue = fat + S.gland + CONN_CC, milk = S.lact.stored / 2;
+  return { fat: fat, gland: S.gland, conn: CONN_CC, milk: milk, tissue: tissue, total: tissue + milk };
+}
+function chestCalc() {
+  const V = volume(), g = V.gland / V.tissue;
+  const musR = S.mus.chest / S.mus0.chest;
+  const firm = clampN(60 + 80 * (g - 0.25) + 10 * (musR - 1) / 0.6 - 12 * S.sag, 0, 100);
+  return { V: V, g: g, firm: firm };
+}
+const firmWord = (f) => f >= 70 ? 'firm' : f >= 45 ? 'moderately firm' : 'soft';
+const sagWord = (s) => s < 0.4 ? 'no sag' : s < 1.2 ? 'slight sag' : s < 2.2 ? 'moderate sag' : 'significant sag';
+
+// ---- milk ----
+const milkCap = () => S.gland * 2 * 1.5;                              // ml both breasts hold when full
+const milkRateMax = () => 750 * Math.pow(S.gland / 150, 0.8);          // ml per day at full supply, both breasts
+const milkCost = () => milkRateMax() * S.lact.sup * MILK_KCAL_PER_ML;
+const glandCeil = () => S.glandMax * (S.curses.forced ? 1.5 : 1);
+const lactActive = () => S.lact.on || S.curses.forced;
+function drainMilk(req) {
+  const got = Math.min(S.lact.stored, req);
+  S.lact.stored -= got;
+  S.lact.drained += req;   // asking counts as demand even if there is less to take
+  return got;
+}
+// ---- mana ----
+function manaCap(r) {
+  let c = S.mus[r] * MANA_PER_KG.mus + S.fat[r] * MANA_PER_KG.fat;
+  if (r === 'chest') c += S.gland * 2 / 1000 * MANA_PER_KG.gland;
+  return c;
+}
+const fillOf = (rs) => { let m = 0, c = 0; rs.forEach((r) => { m += S.mana[r]; c += manaCap(r); }); return c ? m / c : 0; };
+function manaInfuse(target, n) {
+  const rs = target === 'all' ? REGIONS : [target];
+  const free = {}; let tot = 0;
+  rs.forEach((r) => { free[r] = Math.max(0, manaCap(r) - S.mana[r]); tot += free[r]; });
+  const add = Math.min(n, tot);
+  if (tot > 0) rs.forEach((r) => { S.mana[r] += add * free[r] / tot; });
+  return { added: add, wasted: n - add };
+}
+function manaSpend(target, n) {
+  const rs = target === 'all' ? REGIONS : [target];
+  let tot = 0;
+  rs.forEach((r) => { tot += S.mana[r]; });
+  const spent = Math.min(n, tot);
+  if (tot > 0) rs.forEach((r) => { S.mana[r] -= spent * S.mana[r] / tot; });
+  return { spent: spent, short: n - spent };
+}
+
+function measures() {
+  const fatT = sum(S.fat), musT = sum(S.mus);
+  const weight = fatT + musT + S.other;
+  const m = { height: S.height, weight: weight, bodyfat: fatT / weight * 100 };
+  MEAS.forEach((k) => {
+    if (k === 'bust') return;
+    let v = STATS[k].start + S.adj[k];
+    const c = COEF[k];
+    for (const r in c.fat) v += c.fat[r] * (S.fat[r] - S.fat0[r]);
+    for (const r in c.mus) v += c.mus[r] * (S.mus[r] - S.mus0[r]);
+    m[k] = clampStat(k, v);
+  });
+  // bust = underbust plus the cup difference, which comes from breast volume
+  m.bust = clampStat('bust', m.underbust + S.bustA * Math.pow(volume().total, 0.4) + S.adj.bust);
+  return m;
+}
+// Ability scores. Body based: STR, DEX, CON, CHA. Story based: INT, WIS.
+function abilities() {
+  const H2 = Math.pow(M.height / 165, 2), bf = M.bodyfat;
+  const wm = S.mus.legs + S.mus.glutes + 1.3 * S.mus.arms + 1.2 * S.mus.chest + 0.9 * S.mus.core;
+  const wRatio = wm / (23.01 * H2);
+  const coreLeg = (S.mus.core / S.mus0.core + S.mus.legs / S.mus0.legs) / 2;
+  const musRatio = sum(S.mus) / (22 * H2);
+  const inRange = bf >= 18 && bf <= 30;
+  const dist = bf < 18 ? 18 - bf : bf > 30 ? bf - 30 : 0;
+  const n = S.fuelLog.length, steady = n ? S.fuelLog.reduce((a, c) => a + c, 0) / n : 0;
+  const raw = {};
+  raw.str = 10 + (wm - 23.01 * H2) * 0.6;
+  raw.dex = 10 + (26 - clampN(bf, 12, 45)) * 0.25 + 2 * (coreLeg - 1) / 0.6;
+  raw.con = 10 + (inRange ? 1 : -Math.min(5, dist * 0.3)) + (n >= 3 ? (steady - 0.5) * 3 : 0) + (musRatio - 1) * 3;
+  raw.int = 10; raw.wis = 10;
+  const whr = M.waist / M.hips;
+  let shape = 0;
+  if (S.look === 'curvy') shape = 1 - Math.abs(whr - 0.68) / 0.15;
+  else if (S.look === 'athletic') shape = (clampN((wRatio - 1) / 0.3, -1, 1) + clampN(1 - Math.abs(bf - 20) / 15, -1, 1)) / 2;
+  else if (S.look === 'soft') shape = 1 - Math.abs(bf - 32) / 12;
+  shape = clampN(shape, -1, 1);
+  raw.cha = 10 + 2 * shape + ((raw.str + raw.dex + raw.con) / 3 - 10) * 0.2;
+  const mb = { str: 3 * fillOf(['arms', 'chest', 'legs']), dex: 3 * fillOf(['core', 'glutes']), con: 2 * fillOf(REGIONS), int: 2 * fillOf(REGIONS), wis: 2 * fillOf(REGIONS), cha: 0 };
+  const fillMilk = S.lact.stored / Math.max(1, milkCap());
+  const pen = { dex: fillMilk > 0.95 ? 2 : fillMilk > 0.8 ? 1 : 0 };
+  const out = {};
+  AB.forEach((k) => {
+    const perm = raw[k] + S.bonus[k], total = perm + mb[k] - (pen[k] || 0);
+    out[k] = { raw: raw[k], perm: perm, total: total, score: clampN(Math.round(total), 3, 20), mana: mb[k], pen: pen[k] || 0 };
+  });
+  out.info = { whr: whr, inRange: inRange, n: n, steady: steady, bf: bf };
+  return out;
+}
+const sync = () => { M = measures(); A = abilities(); };
+const snap = () => ({ day: S.day, weight: M.weight, fat: M.bodyfat, mus: sum(S.mus) });
+
+function fresh() {
+  const pattern = S ? S.pattern : 'pear';
+  const response = S ? S.response : 3;
+  const look = S ? S.look : 'curvy';
+  const support = S ? S.support : true;
+  const weight = STATS.weight.start, fatT = weight * STATS.bodyfat.start / 100;
+  S = { day: 1, eaten: null, burned: 0, train: zero(), height: STATS.height.start,
+        pattern: pattern, response: response, fat: {}, mus: Object.assign({}, MUS_START),
+        adj: {}, flash: {}, lact: { on: false, stored: 0, sup: 0, demand: 0, drained: 0, lowDays: 0 }, mana: zero(), curses: { hunger: false, leech: '', forced: false, bias: '' }, glandMax: 150, look: look, support: support, fuelLog: [], bonus: { str: 0, dex: 0, con: 0, int: 0, wis: 0, cha: 0 }, hist: [], log: [] };
+  REGIONS.forEach((r) => { S.fat[r] = fatT * PATTERNS[pattern][r]; });
+  S.gland = GLAND_START; S.gland0 = GLAND_START; S.sag = 0; S.support = S.support === undefined ? true : S.support;
+  S.bustA = 15 / Math.pow(volume().total, 0.4);
+  S.fat0 = Object.assign({}, S.fat);
+  S.mus0 = Object.assign({}, S.mus);
+  S.other = weight - fatT - sum(S.mus);
+  MEAS.forEach((k) => { S.adj[k] = 0; });
+  sync();
+  start = Object.assign({}, M);
+  start.mus = sum(S.mus);
+  S.volPrev = volume().tissue;
+  start.vol = volume();
+  start.ab = {};
+  AB.forEach((k) => { start.ab[k] = A[k].score; });
+  disp = Object.assign({}, M);
+  S.hist.push(snap());
+}
+
+function cup() {
+  const idx = Math.round((M.bust - M.underbust - 7.5) / 2.5);
+  return (Math.round(M.underbust / 5) * 5) + CUPS[clampN(idx, 0, CUPS.length - 1)];
+}
+const leanMass = () => M.weight - sum(S.fat);
+const need = (burn) => {
+  const base = (370 + 21.6 * leanMass()) * ACTIVITY;
+  return Math.round(base + (burn || 0) + milkCost() + (S.curses.hunger ? base * 0.25 : 0));
+};
+
+function distWeights(gain) {
+  const p = S.pattern ? PATTERNS[S.pattern] : PATTERNS.pear;
+  let w = {};
+  if (gain) w = Object.assign({}, p);
+  else {
+    let tot = 0;
+    REGIONS.forEach((r) => { w[r] = 1 / p[r]; tot += w[r]; });
+    REGIONS.forEach((r) => { w[r] /= tot; });
+  }
+  const b = S.curses.bias;   // growth bias curse
+  if (b) {
+    if (gain) REGIONS.forEach((r) => { w[r] = 0.4 * w[r] + (r === b ? 0.6 : 0); });
+    else {
+      w[b] *= 0.3;
+      let t = 0;
+      REGIONS.forEach((r) => { t += w[r]; });
+      REGIONS.forEach((r) => { w[r] /= t; });
+    }
+  }
+  return w;
+}
+
+function setDirect(k, v) {
+  if (k === 'gland') { S.gland = clampN(v, 0, 600); sync(); return; }
+  if (k === 'sag') { S.sag = clampN(v, 0, 3); sync(); return; }
+  if (k === 'potential') { S.glandMax = clampN(v, 0, 600); sync(); return; }
+  if (AB.indexOf(k) >= 0) { S.bonus[k] += v - A[k].perm; sync(); return; }
+  v = clampStat(k, v);
+  if (k === 'height') S.height = v;
+  else if (k === 'weight') S.other = Math.max(5, S.other + (v - M.weight));
+  else if (k === 'bodyfat') {
+    const d = M.weight * v / 100 - sum(S.fat);
+    const w = distWeights(d >= 0);
+    REGIONS.forEach((r) => { S.fat[r] = Math.max(0.2, S.fat[r] + d * w[r]); });
+    S.other = Math.max(5, S.other - d);
+  } else S.adj[k] += v - M[k];
+  sync();
+}
+
+function advanceDay(useLogged) {
+  const eaten = useLogged ? S.eaten : null;
+  const burned = useLogged ? S.burned : 0;
+  const nd = need(burned);
+  const net = eaten === null ? 0 : eaten - nd;
+  if (eaten !== null) { S.fuelLog.push(Math.abs(eaten / nd - 1) <= 0.25 ? 1 : 0); if (S.fuelLog.length > 14) S.fuelLog.shift(); }
+  const deltaKg = net / KCAL_PER_KG;
+  const share = net >= 0 ? FAT_GAIN : FAT_LOSS;
+
+  // fat goes to (or leaves) specific areas
+  const fatD = deltaKg * share;
+  const w = distWeights(fatD >= 0);
+  REGIONS.forEach((r) => { S.fat[r] = Math.max(0.3, S.fat[r] + fatD * w[r]); });
+  S.other = Math.max(8, S.other + deltaKg * (1 - share));
+
+  // muscle grows where you trained, shrinks a little elsewhere in a hard deficit
+  const fuel = eaten === null ? 0.6 : net >= 200 ? 1 : net >= -300 ? 0.6 : 0.25;
+  const musBefore = sum(S.mus);
+  const musPrev = Object.assign({}, S.mus), fatPrev = Object.assign({}, S.fat);
+  const grew = [];
+  REGIONS.forEach((r) => {
+    const s = useLogged ? S.train[r] : 0;
+    if (s > 0) {
+      const room = Math.max(0, 1 - (S.mus[r] / S.mus0[r] - 1) / MUSCLE_CEILING);
+      const g = S.mus[r] * PCT_PER_POINT * s * fuel * room * S.response;
+      S.mus[r] += g;
+      if (g > 0) grew.push(RWORD[r]);
+    } else if (net < -500) {
+      S.mus[r] -= S.mus[r] * 0.0004 * (-net / 500);
+    }
+  });
+  const musD = sum(S.mus) - musBefore;
+  S.flash = {};
+  REGIONS.forEach((r) => {
+    if (S.mus[r] - musPrev[r] > 0.0005) S.flash[r] = 'mus';
+    else if (S.fat[r] - fatPrev[r] > 0.01) S.flash[r] = 'fat';
+  });
+
+  // milk: supply follows demand, storage fills, and full breasts leak and slow down
+  const L = S.lact, rateMax = milkRateMax(), capT = milkCap();
+  let leaked = 0;
+  if (lactActive()) {
+    L.demand = 0.7 * L.demand + 0.3 * L.drained;
+    let target = clampN(L.demand / rateMax, 0.15, 1);
+    if (S.curses.forced) target = Math.max(target, 0.6);
+    L.sup += (target - L.sup) * 0.25;
+  } else {
+    L.sup *= 0.85; L.demand *= 0.7; L.stored *= 0.8;   // unused milk is slowly reabsorbed
+    if (L.sup < 0.01) L.sup = 0;
+    if (L.stored < 0.5) L.stored = 0;
+  }
+  const prod = rateMax * L.sup;
+  L.stored += prod;
+  if (L.stored > capT) { leaked = L.stored - capT; L.stored = capT; L.sup *= 0.92; }
+  // glandular tissue adapts: grows under sustained high demand, shrinks back after a week of low demand
+  const ratio = rateMax > 0 ? L.demand / rateMax : 0;
+  if (lactActive() && ratio > 0.9 && S.gland < glandCeil()) S.gland = Math.min(glandCeil(), S.gland * (1 + 0.004 * S.response));
+  L.lowDays = (lactActive() && ratio >= 0.3) || S.curses.forced ? 0 : L.lowDays + 1;
+  if (L.lowDays >= 7 && S.gland > S.gland0) S.gland = Math.max(S.gland0, S.gland * 0.993);
+  L.drained = 0;
+
+  // mana fades fast; a leech curse refills one area and turns overflow into lasting tissue
+  REGIONS.forEach((r) => { S.mana[r] *= (1 - MANA_DECAY); });
+  if (S.curses.leech) {
+    const r = S.curses.leech, cap = manaCap(r), add = cap * 0.7, space = cap - S.mana[r];
+    if (add <= space) S.mana[r] += add;
+    else {
+      S.mana[r] = cap;
+      const over = add - space;
+      if (r === 'chest') S.gland = Math.min(600, S.gland + over * 0.05);
+      else S.mus[r] += over * 0.0008;
+    }
+  }
+
+  // strain on the breast tissue: fast tissue change, heavy volume and full breasts all add sag
+  const v1 = volume();
+  const rate = Math.abs(v1.tissue - S.volPrev) / S.volPrev * 100;
+  const heavy = Math.max(0, v1.total - 500) / 500;
+  const fillM = L.stored / Math.max(1, capT);
+  const engorge = fillM > 0.8 ? (fillM - 0.8) / 0.2 * 0.02 : 0;
+  S.sag = clampN(S.sag + (0.015 * heavy + 0.02 * rate + engorge) * (S.support ? 0.5 : 1), 0, 3);
+  S.volPrev = v1.tissue;
+
+  S.day++;
+  S.eaten = null; S.burned = 0; S.train = zero();
+  sync();
+  S.hist.push(snap());
+
+  const milkTxt = lactActive() ? `, milk +${Math.round(prod)} ml${leaked > 1 ? ' (' + Math.round(leaked) + ' leaked)' : ''}` : '';
+  if (eaten === null) return `Day ${S.day - 1}: nothing logged, assumed maintenance` + milkTxt;
+  const sign = net >= 0 ? '+' : '';
+  let rep = `Day ${S.day - 1}: ate ${fmt(eaten)}, needed ${fmt(nd)} (${sign}${fmt(net)} kcal)`;
+  if (Math.abs(musD) >= 0.005) rep += `, muscle ${signed(musD, 2)} kg` + (grew.length ? ` in ${grew.join(', ')}` : '');
+  return rep + milkTxt;
+}
+function advanceDays(n) {
+  let rep = advanceDay(true);
+  for (let i = 1; i < n; i++) advanceDay(false);
+  if (n > 1) rep += ` (+${n - 1} more days at maintenance)`;
+  return rep;
+}
+
+function addLog(text, tag) {
+  S.log.unshift({ text: text, tag: tag });
+  if (S.log.length > 40) S.log.pop();
+}
+
+/* ---------- silhouette ---------- */
+function smooth(pts) {
+  let d = '';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    const c1 = [p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6];
+    const c2 = [p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6];
+    d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+
+const pt = (p) => p[0].toFixed(1) + ',' + p[1].toFixed(1);
+
+// tapered limb from points and widths
+function limb(pts, ws) {
+  const L = [], Rr = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    let dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy) || 1; dx /= len; dy /= len;
+    const h2 = ws[i] / 2;
+    L.push([pts[i][0] - dy * h2, pts[i][1] + dx * h2]);
+    Rr.push([pts[i][0] + dy * h2, pts[i][1] - dx * h2]);
+  }
+  Rr.reverse();
+  return 'M' + pt(L[0]) + smooth(L) + ' L' + pt(Rr[0]) + smooth(Rr) + ' Z';
+}
+
+function drawFigure() {
+  const b = disp, H = b.height, sc = 2.05, floor = 418;
+  const Y = (f) => floor - f * H * sc;
+  const cxF = 105, cxS = 290;
+  const bmi = b.weight / Math.pow(H / 100, 2);
+  const bf = clampN(0.85 + (bmi - 22) / 40, 0.6, 1.6);
+  const armW = b.arm / Math.PI * sc;
+  const headRy = 0.066 * H * sc;
+  const mir = (p, c) => [2 * c - p[0], p[1]];
+  const shift = (arr, c) => arr.map((p) => [c + p[0], p[1]]);
+
+  /* ----- front view ----- */
+  const hw = (c) => c / 5.8 * sc;
+  const bpx = hw(b.bust), upx = hw(b.underbust), wpx = hw(b.waist), hpx = hw(b.hips);
+  const sh = 0.11 * H * sc, nk = 5 * sc, gap = 1.6;
+  const thW = Math.min(b.thigh / Math.PI * sc * 0.78, hpx * 0.97 - gap);
+  const knW = thW * 0.74 * bf, anW = thW * 0.42;
+  const oF = shift([
+    [nk, Y(.885)], [nk * 1.05, Y(.855)], [nk * 2, Y(.84)], [sh * .8, Y(.826)], [sh, Y(.806)],
+    [sh * .9, Y(.776)], [bpx, Y(.72)], [upx, Y(.675)], [wpx, Y(.625)], [hpx, Y(.52)],
+    [gap + thW, Y(.44)], [gap + knW, Y(.27)], [gap + anW, Y(.035)]
+  ], cxF);
+  const iF = shift([
+    [gap, Y(.035)], [gap + anW * .15, Y(.11)], [gap + knW * .16, Y(.27)], [gap + thW * .12, Y(.38)], [gap, Y(.455)]
+  ], cxF);
+  const oFL = oF.map((p) => mir(p, cxF)).reverse();
+  const iFL = iF.map((p) => mir(p, cxF)).reverse();
+  const front = 'M' + pt(oF[0]) + smooth(oF) + ' L' + pt(iF[0]) + smooth(iF) +
+    ' L' + pt(iFL[0]) + smooth(iFL) + ' L' + pt(oFL[0]) + smooth(oFL) + ' Z';
+  const aP = [[cxF + sh - armW * .5 + 1, Y(.812)], [cxF + sh * .96, Y(.64)], [cxF + hpx + 9, Y(.485)]];
+  const aW = [armW * 1.05, armW * .88, armW * .6];
+  const armF = (pts) => limb(pts, aW);
+  const handF = (p) => `<ellipse cx="${(p[0] + (p[0] > cxF ? 1 : -1)).toFixed(1)}" cy="${(p[1] + armW * .32).toFixed(1)}" rx="${(armW * .4).toFixed(1)}" ry="${(armW * .64).toFixed(1)}"/>`;
+  const aPL = aP.map((p) => mir(p, cxF));
+  const feetF = [1, -1].map((s) =>
+    `<ellipse cx="${(cxF + s * (gap + anW * .5 + 3)).toFixed(1)}" cy="${floor - 6}" rx="${(anW * .55 + 7).toFixed(1)}" ry="6"/>`).join('');
+
+  /* ----- side view (facing right) ----- */
+  const hd = (c) => c / 7.5 * sc;
+  const hdU = hd(b.underbust), hdW = hd(b.waist), hdH = hd(b.hips);
+  const cc = chestCalc(), sagS = 0.008 * S.sag;
+  const proj = (b.bust - b.underbust) * 0.3 * sc * (0.85 + cc.firm / 400);
+  const r = b.thigh / (2 * Math.PI) * sc, knR = r * .72 * bf, anR = r * .42, nkD = 4.6 * sc;
+  const fS = shift([
+    [nkD * .55, Y(.885)], [nkD * .6, Y(.85)], [hdU * .62, Y(.812)], [hdU * .7, Y(.775)],
+    [hdU * .85 + proj * .55, Y(.745)], [hdU * .95 + proj, Y(.715 - sagS)], [hdU * .93 + proj * .4, Y(.688 - sagS)], [hdU * .92, Y(.66)],
+    [hdW * .9, Y(.625)], [hdW * .98, Y(.575)], [hdH * .78, Y(.52)], [r * .95, Y(.44)], [knR, Y(.27)], [anR, Y(.035)]
+  ], cxS);
+  const bS = shift([
+    [-anR * 1.05, Y(.035)], [-knR * 1.25, Y(.19)], [-knR * .95, Y(.27)], [-r * 1.02, Y(.38)],
+    [-hdH * 1.22, Y(.505)], [-hdH * 1.0, Y(.56)], [-hdW * .86, Y(.61)], [-hdW * .9, Y(.65)],
+    [-hdU * .95, Y(.70)], [-hdU * 1.0, Y(.75)], [-hdU * .95, Y(.80)], [-nkD * 1.1, Y(.845)], [-nkD * .95, Y(.885)]
+  ], cxS);
+  const side = 'M' + pt(fS[0]) + smooth(fS) + ' L' + pt(bS[0]) + smooth(bS) + ' Z';
+  const aPS = [[cxS - 4, Y(.812)], [cxS - 1, Y(.64)], [cxS + 5, Y(.485)]];
+  const toeX = anR + 34, heelX = -anR * 1.1 - 1;
+  const footS = `<ellipse cx="${(cxS + (toeX + heelX) / 2).toFixed(1)}" cy="${floor - 6.5}" rx="${((toeX - heelX) / 2).toFixed(1)}" ry="6.5"/>`;
+
+  /* ----- heads ----- */
+  const hy = Y(1.0) + headRy, hrxF = 0.047 * H * sc, hrxS = 0.052 * H * sc;
+  const headF = `<ellipse cx="${cxF}" cy="${hy.toFixed(1)}" rx="${hrxF.toFixed(1)}" ry="${headRy.toFixed(1)}"/>`;
+  const headS = `<ellipse cx="${cxS + 3}" cy="${hy.toFixed(1)}" rx="${hrxS.toFixed(1)}" ry="${headRy.toFixed(1)}"/>` +
+    `<path d="M${(cxS + 3 + hrxS - 1).toFixed(1)},${(hy + headRy * .05).toFixed(1)} l6,${(headRy * .3).toFixed(1)} l-6,${(headRy * .1).toFixed(1)} z"/>`;
+
+  /* ----- highlights for what just changed ----- */
+  const BANDS = { chest: [.815, .685], core: [.685, .56], glutes: [.56, .44], legs: [.44, 0] };
+  const colorOf = (kind) => kind === 'mus' ? 'var(--teal)' : 'var(--brass)';
+  let glowF = '', glowS = '', glowArms = '';
+  REGIONS.forEach((rg) => {
+    const kind = S.flash[rg];
+    if (!kind) return;
+    const c = colorOf(kind);
+    if (rg === 'arms') {
+      [armF(aP), armF(aPL)].forEach((d) => { glowArms += `<path d="${d}" style="fill:${c}" opacity=".5"/>`; });
+      glowArms += `<path d="${armF(aPS)}" style="fill:${c}" opacity=".5" transform="translate(0 0)"/>`;
+      return;
+    }
+    const y0 = Y(BANDS[rg][0]), y1 = Y(BANDS[rg][1]);
+    const rect = `<rect x="0" width="400" y="${y0.toFixed(1)}" height="${(y1 - y0).toFixed(1)}" style="fill:${c}" opacity=".42"`;
+    glowF += rect + ' clip-path="url(#cF)"/>';
+    glowS += rect + ' clip-path="url(#cS)"/>';
+  });
+
+  /* ----- mana aura ----- */
+  let auraF = '', auraS = '', auraArms = '';
+  REGIONS.forEach((rg) => {
+    const cp = manaCap(rg), f = cp ? S.mana[rg] / cp : 0;
+    if (f < 0.05) return;
+    const op = (0.10 + 0.32 * f).toFixed(2);
+    if (rg === 'arms') { [armF(aP), armF(aPL), armF(aPS)].forEach((d) => { auraArms += `<path d="${d}" style="fill:var(--mana)" opacity="${op}"/>`; }); return; }
+    const y0 = Y(BANDS[rg][0]), y1 = Y(BANDS[rg][1]);
+    const rect = `<rect x="0" width="400" y="${y0.toFixed(1)}" height="${(y1 - y0).toFixed(1)}" style="fill:var(--mana)" opacity="${op}"`;
+    auraF += rect + ' clip-path="url(#cF)"/>'; auraS += rect + ' clip-path="url(#cS)"/>';
+  });
+
+  /* ----- guides ----- */
+  const tape = (frac, label, val) => {
+    const y = Y(frac);
+    return `<line class="tape" x1="48" x2="396" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/><text class="tape-label" x="396" y="${(y - 4).toFixed(1)}" text-anchor="end">${label} ${r1(val)}</text>`;
+  };
+  const rx = 28, topY = Y(1.0);
+
+  $('fig').innerHTML =
+    `<defs>` +
+    `<linearGradient id="gBody" x1="0" x2="1" y1="0" y2="0"><stop offset="0" style="stop-color:var(--figure)"/><stop offset=".45" style="stop-color:var(--figure-hi)"/><stop offset="1" style="stop-color:var(--figure)"/></linearGradient>` +
+    `<linearGradient id="gArm" x1="0" x2="1" y1="0" y2="0"><stop offset="0" style="stop-color:var(--figure-dark)"/><stop offset=".5" style="stop-color:var(--figure)"/><stop offset="1" style="stop-color:var(--figure-dark)"/></linearGradient>` +
+    `<clipPath id="cF"><path d="${front}"/></clipPath><clipPath id="cS"><path d="${side}"/></clipPath></defs>` +
+    `<ellipse class="shadow" cx="${cxF}" cy="${floor + 2}" rx="${(hpx + 26).toFixed(1)}" ry="5"/>` +
+    `<ellipse class="shadow" cx="${cxS + 10}" cy="${floor + 2}" rx="52" ry="5"/>` +
+    tape(0.72, 'Bust', M.bust) + tape(0.625, 'Waist', M.waist) + tape(0.52, 'Hips', M.hips) +
+    `<line class="tape" style="stroke-dasharray:none" x1="${rx}" x2="${rx}" y1="${topY.toFixed(1)}" y2="${floor}"/>` +
+    `<line class="tape" style="stroke-dasharray:none" x1="${rx - 5}" x2="${rx + 5}" y1="${topY.toFixed(1)}" y2="${topY.toFixed(1)}"/>` +
+    `<text class="tape-label" x="${rx}" y="${(topY - 8).toFixed(1)}" text-anchor="middle">${r1(M.height)} cm</text>` +
+    // front
+    `<g fill="url(#gBody)"><path d="${front}"/>${feetF}${headF}</g>` + auraF + glowF +
+    `<g fill="url(#gArm)"><path d="${armF(aP)}"/><path d="${armF(aPL)}"/>` +
+    `<circle cx="${aP[0][0].toFixed(1)}" cy="${aP[0][1].toFixed(1)}" r="${(armW * .55).toFixed(1)}"/><circle cx="${aPL[0][0].toFixed(1)}" cy="${aPL[0][1].toFixed(1)}" r="${(armW * .55).toFixed(1)}"/>` +
+    `${handF(aP[2])}${handF(aPL[2])}</g>` +
+    // side
+    `<g fill="url(#gBody)"><path d="${side}"/>${footS}${headS}</g>` + auraS + glowS +
+    `<g fill="url(#gArm)"><path d="${armF(aPS)}"/><circle cx="${aPS[0][0].toFixed(1)}" cy="${aPS[0][1].toFixed(1)}" r="${(armW * .55).toFixed(1)}"/>` +
+    `<ellipse cx="${(aPS[2][0] + 1).toFixed(1)}" cy="${(aPS[2][1] + armW * .32).toFixed(1)}" rx="${(armW * .4).toFixed(1)}" ry="${(armW * .64).toFixed(1)}"/></g>` +
+    auraArms + glowArms +
+    `<line class="ground" x1="8" x2="392" y1="${floor}" y2="${floor}"/>` +
+    `<text class="fig-cap" x="${cxF}" y="440" text-anchor="middle">Front</text><text class="fig-cap" x="${cxS + 10}" y="440" text-anchor="middle">Side</text>`;
+  $('fig').setAttribute('aria-label',
+    `Front and side silhouettes: height ${r1(M.height)} cm, bust ${r1(M.bust)}, waist ${r1(M.waist)}, hips ${r1(M.hips)}, upper arm ${r1(M.arm)}, thigh ${r1(M.thigh)}`);
+}
+
+function kick() {
+  if (reduce) { Object.assign(disp, M); drawFigure(); return; }
+  if (raf) return;
+  const step = () => {
+    let moving = false;
+    for (const k in M) {
+      const diff = M[k] - disp[k];
+      if (Math.abs(diff) > 0.01) { disp[k] += diff * 0.14; moving = true; } else disp[k] = M[k];
+    }
+    drawFigure();
+    raf = moving ? requestAnimationFrame(step) : null;
+  };
+  raf = requestAnimationFrame(step);
+}
+
+/* ---------- panels ---------- */
+function delta(k, unit) {
+  const d = M[k] - start[k];
+  if (Math.abs(d) < 0.05) return 'same as the start';
+  return signed(d, 1) + unit + ' since the start';
+}
+
+function renderPlates() {
+  const musT = sum(S.mus), md = musT - start.mus;
+  const items = [
+    ['Weight', r1(M.weight) + ' kg', delta('weight', ' kg'), ''],
+    ['Body fat', r1(M.bodyfat) + '%', delta('bodyfat', '%'), ''],
+    ['Muscle', r1(musT) + ' kg', Math.abs(md) < 0.05 ? 'same as the start' : signed(md, 2) + ' kg since the start', ''],
+    ['Bra size', cup(), `bust ${r1(M.bust)}, under ${r1(M.underbust)}`, 'hero'],
+    ['Height', r1(M.height) + ' cm', delta('height', ' cm'), ''],
+    ['Waist', r1(M.waist) + ' cm', delta('waist', ' cm'), ''],
+    ['Hips', r1(M.hips) + ' cm', delta('hips', ' cm'), ''],
+    ['Upper arm', r1(M.arm) + ' cm', delta('arm', ' cm'), ''],
+    ['Thigh', r1(M.thigh) + ' cm', delta('thigh', ' cm'), '']
+  ];
+  $('plates').innerHTML = items.map((i) =>
+    `<div class="plate ${i[3]}"><div class="k">${i[0]}</div><div class="v">${i[1]}</div><div class="d">${i[2]}</div></div>`).join('');
+}
+
+function renderChest() {
+  const c = chestCalc(), V = c.V, V0 = start.vol;
+  const d0 = (v) => Math.abs(v) < 0.5 ? '' : ' (' + (v > 0 ? '+' : '') + Math.round(v) + ')';
+  const tile = (k, v, d) => `<div class="plate"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  $('chestTiles').innerHTML =
+    tile('Volume each', Math.round(V.total) + ' cc', Math.abs(V.total - V0.total) < 0.5 ? 'same as the start' : (V.total > V0.total ? '+' : '') + Math.round(V.total - V0.total) + ' cc since the start') +
+    tile('Bra size', cup(), 'from volume') +
+    tile('Firmness', Math.round(c.firm), firmWord(c.firm)) +
+    tile('Sag', r1(S.sag) + ' of 3', sagWord(S.sag));
+  const pct = (x) => (x / V.total * 100).toFixed(1) + '%';
+  $('chestMix').innerHTML = `<span class="g" style="width:${pct(V.gland)}"></span><span class="f" style="width:${pct(V.fat)}"></span><span class="o" style="width:${pct(V.conn)}"></span><span class="k" style="width:${pct(V.milk)}"></span>`;
+  $('chestText').textContent =
+    `Glandular ${Math.round(V.gland)} cc${d0(V.gland - V0.gland)} (${Math.round(c.g * 100)}%), fat ${Math.round(V.fat)} cc${d0(V.fat - V0.fat)} (${Math.round(V.fat / V.tissue * 100)}%)${V.milk > 1 ? ', milk ' + Math.round(V.milk) + ' cc' : ''}.`;
+}
+
+function renderAbilities() {
+  const info = A.info;
+  const story = (k) => S.bonus[k] ? `story ${signed(S.bonus[k], 1)}` : 'from the story';
+  const why = {
+    str: `muscle ${r1(sum(S.mus))} kg, arms and chest count extra`,
+    dex: `body fat ${r1(info.bf)}%, core and leg tone`,
+    con: `fat ${info.inRange ? 'in' : 'outside'} the healthy range` + (info.n >= 3 ? `, eating ${Math.round(info.steady * 100)}% steady` : ''),
+    int: story('int'),
+    wis: story('wis'),
+    cha: S.look === 'off' ? 'conditioning and story' : `${LOOKS[S.look].toLowerCase()} look, waist to hip ${r2(info.whr)}`
+  };
+  $('abilities').innerHTML = AB.map((k) => {
+    const sc = A[k].score, d = sc - start.ab[k];
+    return `<div class="ab"><div class="an">${ABNAME[k]}</div><div class="as">${sc}<span class="am">${modTxt(sc)}</span></div>` +
+      `<div class="ad">${d === 0 ? 'same as the start' : (d > 0 ? '+' : '') + d + ' since the start'}</div><div class="aw">${why[k]}${A[k].mana >= 0.5 ? ', mana +' + Math.round(A[k].mana) : ''}${A[k].pen ? ', full breasts \u2212' + A[k].pen : ''}</div></div>`;
+  }).join('');
+}
+const statLine = () => AB.map((k) => k.toUpperCase() + ' ' + A[k].score).join(', ');
+
+function renderMilk() {
+  const L = S.lact, capT = milkCap(), rateMax = milkRateMax();
+  const fill = capT ? L.stored / capT : 0;
+  const tile = (k, v, d) => `<div class="plate"><div class="k">${k}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  $('milkTiles').innerHTML =
+    tile('Stored', Math.round(L.stored) + ' ml', Math.round(fill * 100) + '% of ' + Math.round(capT) + ' ml') +
+    tile('Production', Math.round(rateMax * L.sup) + ' ml/day', 'full supply is ' + Math.round(rateMax)) +
+    tile('Supply', Math.round(L.sup * 100) + '%', lactActive() ? 'follows demand' : 'fading') +
+    tile('Kcal cost', fmt(milkCost()) + '/day', 'added to your need');
+  $('milkFill').style.width = clampN(fill * 100, 0, 100) + '%';
+  const st = !lactActive() && L.stored < 1 ? 'Not lactating. Start it with the button or [lactating on].'
+    : fill > 0.95 ? 'Overfull: leaking, uncomfortable, extra sag strain.'
+    : fill > 0.8 ? 'Engorged: uncomfortable, small Dexterity penalty.' : 'Comfortable.';
+  $('milkText').textContent = `${st} Demand about ${Math.round(L.demand)} ml/day. Glandular tissue ${Math.round(S.gland)} cc each, ceiling ${Math.round(glandCeil())}.` +
+    (L.lowDays >= 1 && S.gland > S.gland0 ? ` Low demand for ${L.lowDays} days${L.lowDays >= 7 ? ', shrinking back' : ''}.` : '');
+  $('lactBtn').textContent = S.lact.on ? 'Stop lactating' : 'Start lactating';
+}
+
+function renderMana() {
+  let total = 0, capTot = 0;
+  REGIONS.forEach((r) => { total += S.mana[r]; capTot += manaCap(r); });
+  $('manaRows').innerHTML = `<div class="legend"><span>Total ${Math.round(total)} of ${Math.round(capTot)} (${capTot ? Math.round(total / capTot * 100) : 0}%)</span></div>` +
+    REGIONS.map((r) => {
+      const c = manaCap(r), m = S.mana[r];
+      return `<div class="reg"><div class="rn">${RNAME[r]}</div><div class="rbar"><span class="a" style="width:${c ? (m / c * 100).toFixed(1) : 0}%"></span></div>` +
+        `<div class="rv"><b>${Math.round(m)}</b> of ${Math.round(c)}</div></div>`;
+    }).join('');
+}
+
+function renderCurses() {
+  const c = S.curses;
+  $('curHunger').textContent = c.hunger ? 'Remove' : 'Add';
+  $('curForced').textContent = c.forced ? 'Remove' : 'Add';
+  $('curLeech').textContent = c.leech ? 'Remove' : 'Add';
+  $('curBias').textContent = c.bias ? 'Remove' : 'Add';
+  if (c.leech) $('leechTarget').value = c.leech;
+  if (c.bias) $('biasTarget').value = c.bias;
+}
+
+function extraAI() {
+  const parts = [], L = S.lact;
+  if (lactActive() || L.stored > 1) parts.push('Milk ' + Math.round(L.stored / Math.max(1, milkCap()) * 100) + '% full' + (lactActive() ? ', lactating' : ''));
+  const mf = fillOf(REGIONS);
+  if (mf > 0.05) parts.push('Mana ' + Math.round(mf * 100) + '%');
+  const cs = [];
+  if (S.curses.hunger) cs.push('hunger');
+  if (S.curses.leech) cs.push('mana leech (' + RWORD[S.curses.leech] + ')');
+  if (S.curses.forced) cs.push('forced milk');
+  if (S.curses.bias) cs.push('growth bias (' + RWORD[S.curses.bias] + ')');
+  if (cs.length) parts.push('Cursed: ' + cs.join(', '));
+  return parts.length ? ' ' + parts.join('. ') + '.' : '';
+}
+
+function renderRegions() {
+  const SCALE = 16;
+  const dl = (v) => Math.abs(v) < 0.005 ? '' : ' (' + signed(v, 2) + ')';
+  $('regions').innerHTML = REGIONS.map((r) => {
+    const m = S.mus[r], f = S.fat[r];
+    return `<div class="reg"><div class="rn">${RNAME[r]}</div>` +
+      `<div class="rbar"><span class="m" style="width:${(m / SCALE * 100).toFixed(1)}%"></span><span class="f" style="width:${(f / SCALE * 100).toFixed(1)}%"></span></div>` +
+      `<div class="rv">muscle <b>${r1(m)} kg</b>${dl(m - S.mus0[r])}, fat <b>${r1(f)} kg</b>${dl(f - S.fat0[r])}</div></div>`;
+  }).join('');
+}
+
+function renderFuel() {
+  const eaten = S.eaten || 0, nd = need(S.burned);
+  const cap = nd * 1.5, ratio = eaten / nd;
+  $('dayNum').textContent = S.day;
+  $('barFill').style.width = clampN(eaten / cap * 100, 0, 100) + '%';
+  $('barFill').style.background = ratio > 1.1 ? 'var(--rose)' : ratio >= 0.9 ? 'var(--brass)' : 'var(--teal)';
+  $('barMark').style.left = (nd / cap * 100) + '%';
+  const trained = REGIONS.filter((r) => S.train[r] > 0).map((r) => `${RWORD[r]} x${S.train[r]}`);
+  const burnTxt = S.burned ? ' (includes ' + fmt(S.burned) + ' from exercise)' : '';
+  $('barText').textContent =
+    (S.eaten === null
+      ? `Nothing eaten yet. Needs about ${fmt(nd)} kcal${burnTxt}. Ending the day now counts as maintenance.`
+      : `Eaten ${fmt(eaten)} of about ${fmt(nd)} kcal needed${burnTxt}.`) +
+    (trained.length ? ` Trained today: ${trained.join(', ')}.` : '');
+}
+
+function spark(svgId, key, capId, unit, color) {
+  const vals = S.hist.map((h) => h[key]);
+  const min = Math.min.apply(null, vals) - 0.3, max = Math.max.apply(null, vals) + 0.3;
+  const n = vals.length;
+  const pts = vals.map((v, i) => [n === 1 ? 100 : 4 + (i / (n - 1)) * 192, 46 - ((v - min) / (max - min)) * 40]);
+  const line = pts.map((p) => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+  const last = pts[pts.length - 1];
+  $(svgId).innerHTML =
+    `<polyline points="${line}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>` +
+    `<circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="${color}"/>`;
+  $(capId).textContent = `${r1(vals[0])}${unit} at the start, ${r1(vals[n - 1])}${unit} now`;
+}
+
+function renderLog() {
+  $('log').innerHTML = S.log.length
+    ? S.log.map((l) => `<li>${l.text}<br><code class="tag">${l.tag}</code></li>`).join('')
+    : '<li class="empty">Nothing yet. Press a button to see what the script would do.</li>';
+}
+
+function aiLine() {
+  const notes = [];
+  REGIONS.forEach((r) => {
+    const mr = S.mus[r] / S.mus0[r], fr = S.fat[r] / S.fat0[r], w = RWORD[r];
+    if (mr >= 1.12) notes.push([mr - 1, 'muscular ' + w]);
+    else if (mr >= 1.04) notes.push([mr - 1, 'toned ' + w]);
+    if (fr >= 1.25) notes.push([fr - 1, 'softer ' + w]);
+    else if (fr >= 1.08) notes.push([fr - 1, 'slightly fuller ' + w]);
+    else if (fr <= 0.75) notes.push([1 - fr, 'leaner ' + w]);
+    else if (fr <= 0.92) notes.push([1 - fr, 'slightly slimmer ' + w]);
+  });
+  notes.sort((a, b) => b[0] - a[0]);
+  const txt = notes.slice(0, 4).map((n) => n[1]).join(', ');
+  return txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : 'No notable changes yet';
+}
+
+function renderAI() {
+  $('aiText').textContent =
+    `[Body: ${r1(M.height)} cm, ${r1(M.weight)} kg, ${Math.round(M.bodyfat)}% fat, bra ${cup()}. ${aiLine()}. ` +
+    `Ate ${fmt(S.eaten || 0)} of ${fmt(need(S.burned))} kcal today. Chest: about ${Math.round(chestCalc().V.total)} cc each, ${firmWord(chestCalc().firm)}, ${sagWord(S.sag)}.${extraAI()} Stats: ${statLine()}.]\n\n` +
+    `Tags the AI may write back:\n[ate 600] [burn 300] [train legs 2] [day] [bust +2] [int +1] [gland +20]\n[lactating on] [milk -300] [mana +30 arms] [curse add hunger]`;
+}
+
+function renderCard() {
+  const list = (o) => REGIONS.map((r) => r + ' ' + r1(o[r])).join(', ');
+  $('cardText').textContent =
+`BODY SHEET
+Day: ${S.day}
+Height: ${r1(M.height)} cm
+Weight: ${r1(M.weight)} kg
+Body fat: ${r1(M.bodyfat)} %
+Bust: ${r1(M.bust)} cm
+Underbust: ${r1(M.underbust)} cm
+Waist: ${r1(M.waist)} cm
+Hips: ${r1(M.hips)} cm
+Arm: ${r1(M.arm)} cm
+Thigh: ${r1(M.thigh)} cm
+Bra: ${cup()}
+Breast cc each: ${Math.round(chestCalc().V.total)} (gland ${Math.round(S.gland)}, fat ${Math.round(chestCalc().V.fat)})
+Firmness: ${Math.round(chestCalc().firm)}
+Sag: ${r1(S.sag)}
+Milk ml: ${Math.round(S.lact.stored)} / ${Math.round(milkCap())} (${lactActive() ? 'lactating' : 'not lactating'}, supply ${Math.round(S.lact.sup * 100)}%)
+Mana: ${Math.round(REGIONS.reduce((t, r) => t + S.mana[r], 0))} / ${Math.round(REGIONS.reduce((t, r) => t + manaCap(r), 0))}
+Curses: ${[S.curses.hunger && 'hunger', S.curses.leech && 'leech ' + S.curses.leech, S.curses.forced && 'forced milk', S.curses.bias && 'bias ' + S.curses.bias].filter(Boolean).join(', ') || 'none'}
+Stats: ${statLine()}
+Muscle kg: ${list(S.mus)}
+Fat kg: ${list(S.fat)}
+Kcal today: ${fmt(S.eaten || 0)} / ${fmt(need(S.burned))}`;
+}
+
+function update() {
+  renderPlates(); renderChest(); renderMilk(); renderMana(); renderCurses(); renderAbilities(); renderRegions(); renderFuel(); renderLog(); renderAI(); renderCard();
+  spark('wSpark', 'weight', 'wCap', ' kg', 'var(--ink)');
+  spark('fSpark', 'fat', 'fCap', '%', 'var(--brass)');
+  spark('mSpark', 'mus', 'mCap', ' kg', 'var(--teal)');
+  kick();
+}
+
+/* ---------- actions ---------- */
+function eat(n, name) {
+  n = clampN(Math.round(n), 1, 5000);
+  S.eaten = (S.eaten || 0) + n;
+  addLog(`Ate ${name}: +${fmt(n)} kcal`, `[ate ${n}]   or   :eat ${n}`);
+  update();
+}
+function burn(n, name) {
+  S.burned += n;
+  addLog(`Did ${name}: +${fmt(n)} kcal burned`, `[burn ${n}]   or   :burn ${n}`);
+  update();
+}
+function trainRegion(r) {
+  const s = +$('effort').value;
+  S.train[r] = Math.min(4, S.train[r] + s);
+  S.flash[r] = 'mus';
+  addLog(`Trained ${RWORD[r]} (${['', 'light', 'normal', 'hard'][s]})`, `[train ${r} ${s}]   or   :train ${r} ${s}`);
+  update();
+}
+function story(k, n, label) {
+  S.bonus[k] += n;
+  sync();
+  addLog(`${label}: ${ABNAME[k]} ${n > 0 ? '+' : ''}${n}`, `[${k} ${n > 0 ? '+' : ''}${n}]   or   :set ${k} ${A[k].score}`);
+  update();
+}
+function glandChange(n) {
+  S.gland = clampN(S.gland + n, 0, 600);
+  sync();
+  addLog(`Glandular tissue ${n > 0 ? '+' : ''}${n} cc each`, `[gland ${n > 0 ? '+' : ''}${n}]   or   :set gland ${Math.round(S.gland)}`);
+  update();
+}
+function drain(req, label) {
+  const got = drainMilk(req);
+  addLog(`${label}: took ${Math.round(got)} ml${got < req ? ' (asked for ' + Math.round(req) + ')' : ''}`, `[milk -${Math.round(req)}]`);
+  sync(); update();
+}
+function manaAction(kind) {
+  const t = $('manaTarget').value, n = Math.max(1, +$('manaAmt').value || 0);
+  const where = t === 'all' ? '' : ' ' + t;
+  if (kind === 'in') {
+    const r = manaInfuse(t, n);
+    addLog(`Infused ${Math.round(r.added)} mana${t === 'all' ? '' : ' into ' + RWORD[t]}${r.wasted > 0.5 ? ' (' + Math.round(r.wasted) + ' wasted, full)' : ''}`, `[mana +${n}${where}]`);
+  } else {
+    const r = manaSpend(t, n);
+    addLog(`Spent ${Math.round(r.spent)} mana${t === 'all' ? '' : ' from ' + RWORD[t]}${r.short > 0.5 ? ' (short by ' + Math.round(r.short) + ')' : ''}`, `[mana -${n}${where}]`);
+  }
+  sync(); update();
+}
+function toggleCurse(kind) {
+  const c = S.curses;
+  const say = (on, name, tag) => addLog(on ? `Cursed: ${name}` : `${name} curse lifted`, `[curse ${on ? 'add' : 'remove'} ${tag}]`);
+  if (kind === 'hunger') { c.hunger = !c.hunger; say(c.hunger, 'hunger', 'hunger'); }
+  else if (kind === 'forced') { c.forced = !c.forced; say(c.forced, 'forced milk', 'forced'); }
+  else if (kind === 'leech') { if (c.leech) { c.leech = ''; say(false, 'mana leech', 'leech'); } else { c.leech = $('leechTarget').value; say(true, 'mana leech (' + RWORD[c.leech] + ')', 'leech ' + c.leech); } }
+  else if (kind === 'bias') { if (c.bias) { c.bias = ''; say(false, 'growth bias', 'bias'); } else { c.bias = $('biasTarget').value; say(true, 'growth bias (' + RWORD[c.bias] + ')', 'bias ' + c.bias); } }
+  sync(); update();
+}
+function endDays(n) {
+  addLog(advanceDays(n), n > 1 ? `[day ${n}]   or   :day ${n}` : `[day]   or   :day`);
+  update();
+}
+function setStat() {
+  const k = $('setKey').value, v = parseFloat($('setVal').value);
+  if (isNaN(v)) return;
+  setDirect(k, v);
+  if (k === 'gland' || k === 'sag' || k === 'potential') {
+    addLog(k === 'gland' ? `Glandular tissue set to ${Math.round(S.gland)} cc each` : k === 'potential' ? `Glandular potential set to ${Math.round(S.glandMax)} cc each` : `Sag set to ${r1(S.sag)}`, `:set ${k} ${v}`);
+    update();
+    return;
+  }
+  addLog(AB.indexOf(k) >= 0 ? `${ABNAME[k]} set to ${A[k].score}` : `${STATS[k].label} set to ${r1(M[k])}${STATS[k].unit}`, `:set ${k} ${v}`);
+  update();
+}
+function lockUI(on) {
+  document.querySelectorAll('.ctl').forEach((el) => { el.disabled = on; });
+}
+async function simulate(kcal) {
+  if (busy) return;
+  busy = true; lockUI(true);
+  addLog(`Starting a week of ${fmt(kcal)} kcal days`, `[ate ${kcal}] [day]   x7`);
+  update();
+  for (let i = 0; i < 7; i++) {
+    S.eaten = kcal;
+    addLog(advanceDay(true), `[ate ${kcal}] [day]`);
+    update();
+    await sleep(reduce ? 0 : 450);
+  }
+  busy = false; lockUI(false);
+}
+async function simulateTraining(regions, label) {
+  if (busy) return;
+  busy = true; lockUI(true);
+  addLog(`Starting a ${label} week`, `[ate 2400] [train ${regions.join(' 2] [train ')} 2] [day]   x7`);
+  update();
+  const lift = [true, true, false, true, true, false, false];
+  for (let i = 0; i < 7; i++) {
+    S.eaten = 2400;
+    let tag = '[ate 2400]';
+    if (lift[i]) {
+      regions.forEach((r) => { S.train[r] = 2; });
+      S.burned = 300;
+      tag += ' [burn 300] ' + regions.map((r) => `[train ${r} 2]`).join(' ');
+    }
+    addLog(advanceDay(true), tag + ' [day]');
+    update();
+    await sleep(reduce ? 0 : 450);
+  }
+  busy = false; lockUI(false);
+}
+
+document.querySelectorAll('[data-eat]').forEach((b) =>
+  b.addEventListener('click', () => eat(+b.dataset.eat, b.dataset.name)));
+document.querySelectorAll('[data-burn]').forEach((b) =>
+  b.addEventListener('click', () => burn(+b.dataset.burn, b.dataset.name)));
+document.querySelectorAll('[data-milk]').forEach((b) => b.addEventListener('click', () => drain(+b.dataset.milk, 'Drained')));
+$('drainAll').addEventListener('click', () => drain(S.lact.stored + 100, 'Drained fully'));
+$('lactBtn').addEventListener('click', () => {
+  S.lact.on = !S.lact.on;
+  addLog(S.lact.on ? 'Lactation switched on' : 'Lactation switched off', `[lactating ${S.lact.on ? 'on' : 'off'}]`);
+  sync(); update();
+});
+document.querySelectorAll('[data-pot]').forEach((b) => b.addEventListener('click', () => {
+  const n = +b.dataset.pot;
+  S.glandMax = clampN(S.glandMax + n, 0, 600);
+  addLog(`Glandular potential ${n > 0 ? '+' : ''}${n} cc (ceiling ${Math.round(S.glandMax)})`, `[potential ${n > 0 ? '+' : ''}${n}]`);
+  sync(); update();
+}));
+$('infuseBtn').addEventListener('click', () => manaAction('in'));
+$('spendBtn').addEventListener('click', () => manaAction('out'));
+$('curHunger').addEventListener('click', () => toggleCurse('hunger'));
+$('curForced').addEventListener('click', () => toggleCurse('forced'));
+$('curLeech').addEventListener('click', () => toggleCurse('leech'));
+$('curBias').addEventListener('click', () => toggleCurse('bias'));
+document.querySelectorAll('[data-gland]').forEach((b) => b.addEventListener('click', () => glandChange(+b.dataset.gland)));
+$('liftBtn').addEventListener('click', () => {
+  S.sag = Math.max(0, S.sag - 0.5); sync();
+  addLog('Lifted the tissue: sag \u22120.5', '[sag -0.5]   or   :set sag ' + r1(S.sag));
+  update();
+});
+$('support').addEventListener('change', () => {
+  S.support = $('support').value === '1';
+  addLog(S.support ? 'Wearing a supportive bra' : 'No support', ':support ' + (S.support ? 'on' : 'off'));
+  update();
+});
+document.querySelectorAll('[data-story]').forEach((b) =>
+  b.addEventListener('click', () => { const p = b.dataset.story.split(':'); story(p[0], +p[1], p[2]); }));
+document.querySelectorAll('[data-train]').forEach((b) =>
+  b.addEventListener('click', () => trainRegion(b.dataset.train)));
+$('eatCustomBtn').addEventListener('click', () => {
+  const v = parseInt($('eatCustom').value, 10);
+  if (v > 0) { eat(v, 'something'); $('eatCustom').value = ''; }
+});
+$('endDay').addEventListener('click', () => endDays(1));
+$('skipWeek').addEventListener('click', () => endDays(7));
+$('simSurplus').addEventListener('click', () => simulate(2900));
+$('simDeficit').addEventListener('click', () => simulate(1500));
+$('simLower').addEventListener('click', () => simulateTraining(['legs', 'glutes', 'core'], 'lower body'));
+$('simUpper').addEventListener('click', () => simulateTraining(['chest', 'arms', 'core'], 'upper body'));
+$('setBtn').addEventListener('click', setStat);
+$('resetBtn').addEventListener('click', () => { if (busy) return; fresh(); update(); });
+$('pattern').addEventListener('change', () => {
+  if (busy) { $('pattern').value = S.pattern; return; }
+  const p = $('pattern').value;
+  fresh(); S.pattern = p; fresh(); update();
+});
+$('look').addEventListener('change', () => { S.look = $('look').value; sync(); update(); });
+$('pace').addEventListener('change', () => { S.response = +$('pace').value; });
+
+$('setKey').innerHTML = Object.keys(STATS).map((k) => `<option value="${k}">${STATS[k].label} (${STATS[k].unit})</option>`).join('') +
+  AB.map((k) => `<option value="${k}">${ABNAME[k]} (score)</option>`).join('') +
+  '<option value="gland">Glandular tissue (cc each)</option><option value="potential">Glandular potential (cc each)</option><option value="sag">Sag (0 to 3)</option>';
+const regionOpts = REGIONS.map((r) => `<option value="${r}">${RNAME[r]}</option>`).join('');
+$('manaTarget').innerHTML = '<option value="all">All areas</option>' + regionOpts;
+$('leechTarget').innerHTML = regionOpts;
+$('biasTarget').innerHTML = regionOpts;
+fresh();
+update();
+drawFigure();
+</script>
+</body>
+</html>

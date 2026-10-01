@@ -1,0 +1,103 @@
+# Body tracker for AI Dungeon: project notes
+
+A personal, private AI Dungeon scenario tool. It tracks body changes for one or more adult characters (fat, muscle, calories, tissue, milk, mana, curses, ability scores) in a script, so the AI's narration stays consistent with real numbers. The user's interest is semi-scientific body growth and change tropes, with extra emphasis on the chest. Tone: technical and matter-of-fact. The scripts only hand the AI short factual lines, and the story tone is set by the user's scenario and AI Dungeon's mature setting. The user states all characters are adults.
+
+## Files (all in `aid_body_tracker/`)
+
+| File | Paste into | Notes |
+|---|---|---|
+| `bt_library.js` | Library tab | Everything: config, model, parsing, text. About 1,300 lines. |
+| `bt_library_whitney.js` | Library tab (instead) | Same library with `CHARACTERS` preset for Whitney and `HIDE_PLAYER: true`. |
+| `bt_input.js` | Input tab | Undo snapshot, commands, auto-detect, refreshes the Author's Note. |
+| `bt_output.js` | Output tab | Retry snapshot, reads AI tags, writes cards, status line. |
+| Context tab | | Left as the default. Not used. |
+| `whitney_scenario.md` | | Ready-to-copy scenario text and story cards. |
+| `body_sheet_demo_v6.html` | | Interactive demo page (also published as an artifact: https://claude.ai/artifact/Lv9gv21BmxVrNbJcsuE7GJ). It has the front and side figure, per-area fat and muscle, chest tissue, milk, mana, curses and abilities. It does not have multi-character, the Look adjectives, typo-tolerant detection or inspection. |
+
+Each script tab ends with `modifier(text)`. The Input and Output hooks return `{ text }`. All shared code lives in the Library.
+
+## Environment facts (from AI Dungeon's scripting guide and real play)
+
+- Only Simple Start and Character Creator scenarios can have scripts. Free tier context is 4k tokens, so every token in the note matters.
+- Hooks get `text`, `history`, `storyCards`, `state`, `info`. `state` persists. Available functions: `addStoryCard(keys, entry, type)`, `updateStoryCard(index, keys, entry, type)`, `removeStoryCard(index)`, `log`.
+- `state.memory.authorsNote` and `state.memory.frontMemory` set the note and the very end of the context. Memory changed in Output only takes effect next action.
+- Returning an empty string from Input or Output is an error. `stop: true` makes the reply "stop".
+- `state.message` is not shown on the newer client. The script therefore appends a bracketed status line to replies.
+- Script Test panel: paste the test JSON (`text`, `history`, `storyCards`, `state`, `info`) into the INPUT box on the right, with the matching script tab selected on the left. Do not paste it into the code editor. The Console Log only shows logs from real adventures started with Play.
+- **`info.actionCount` is unreliable in real play** (the tracker was being reset every turn). Fixed by `slotKey()`, which combines the count with a hash of the last 4 history texts.
+- Free models often ignore hidden tags and invent numbers. So actions are also spotted in what the player types, and the note says to never invent measurements.
+
+## State layout
+
+- `state.bt`: the player's sheet. `state.npcs[key]`: other characters (key is the lowercase name, and `s.name` holds the display name). A sheet holds `start`, `height`, `fat{region}`, `mus{region}`, `fat0`, `mus0`, `other`, `adj{}`, `bonus{}`, `gland`, `gland0`, `glandMax`, `sag`, `lact{}`, `mana{}`, `curses{}`, `day`, `eaten`, `burned`, `train{}`, `fuelLog`, `auto{}`, `lastDayAt`, `support`, `look`, `pace`, `pattern`, `bustA`, `volPrev`.
+- Regions: chest, arms, core, glutes, legs. Measurements come from `start[k] + adj[k] + coef * (fat - fat0) + coef * (mus - mus0)`.
+- Other state keys: `bt_in` and `bt_out` (arrays of `[slotKey, snapshot]`, max 40), `bt_flag`, `bt_note`, `bt_touched`, `bt_help`, `bt_inspect`, `bt_inspectWho`, `bt_hideYou`, `bt_seeded`, `bt_card`, `bt_cardPrev`, `bt_dbg`.
+- Snapshots are `JSON.stringify({ bt, npcs })`. Retry (Output) and undo (Input) restore from the slot if that moment was seen before. Older plain-`bt` snapshots are still readable. `upgradeBT()` migrates older saved adventures.
+
+## Model (formulas are in the Library, all constants in one place)
+
+- **Energy:** Katch-McArdle `370 + 21.6 * leanMass`, times `ACTIVITY` (1.35), plus burned kcal, milk cost (0.8 kcal/ml), and the hunger curse (+25%). 7,700 kcal per kg. A surplus is 75% fat and 25% lean, and a deficit is 80% fat and 20% lean. Fat lands by `PATTERNS[pear|apple|even]` and leaves in the inverse order (stubborn areas last). The growth-bias curse pushes fat toward one area.
+- **Muscle:** grows per trained region: `mus * 0.0011 * effort * fuel * room * pace`, where `fuel` is 1 (surplus), 0.6 (maintenance) or 0.25 (deficit), and `room` caps growth at 60% over the start. It shrinks slightly in a deep deficit. `PACE` is 3 by default (1 is realistic).
+- **Chest:** volume per breast = breast fat (25% of chest fat) + glandular cc + 20 connective + stored milk. Bust = underbust + `bustA * volume^0.4`, and bra size comes from bust minus underbust (2.5 cm per cup, UK/EU style). Firmness = `60 + 80 * (gland share - 0.25) + pec muscle - 12 * sag`. Sag grows from fast tissue change, heavy volume and full breasts, and halves with support. It never heals except via tags (`[sag -0.5]`).
+- **Glandular tissue:** not affected by food or training. It changes via tags and commands, and grows slowly toward its ceiling under sustained demand (drained ml/day above 90% of full output). It shrinks back after 7 days of low demand, never below its start.
+- **Milk:** capacity `gland * 3` ml, full output `750 * (gland/150)^0.8` ml/day, supply follows demand (asking counts as demand). Full breasts leak, slow production, cost Dexterity and add sag strain. Unused milk reabsorbs.
+- **Mana:** per region, `8/kg muscle + 3/kg fat + 150/kg glandular`, half fades daily, and infusing past capacity is wasted. Temporary ability bonuses: STR from arms, chest and legs, DEX from core and glutes, and smaller boosts to CON, INT and WIS.
+- **Curses:** hunger, leech (refills one area, overflow becomes lasting tissue), forced milk, growth bias.
+- **Abilities:** STR from muscle, DEX from body fat and core/leg tone, CON from healthy body fat range plus steady eating (within 25% of need over 14 logged days), INT and WIS from the story only, CHA from the "look" (curvy, athletic, soft, off). Each sheet's own starting body counts as average (10). Scores are clamped 3 to 20, with modifier `floor((score - 10) / 2)`.
+- **Look line:** the `LOOK_WORDS` table (height, build, bust, waist, hips, thigh, arm) plus shape names and notable extras. Average features are omitted.
+
+## Inputs
+
+**Commands** (typed in the Do mode): `:set stat value`, `:eat kcal`, `:burn kcal`, `:train area [1-3]`, `:day [n]`, `:gland +/-cc`, `:potential +/-cc`, `:lactate on|off`, `:milk ml`, `:mana +/-n [area]`, `:curse add|remove hunger|leech|forced|bias [area]`, `:support on|off`, `:look curvy|athletic|soft|off`, `:pace n`, `:inspect [part]` or `:scan [part]`, `:body`, `:help`, `:reset confirm`, and `:sheet add Name [key=value ...]`, `:sheet remove Name`, `:sheet list`, `:sheet you on|off`. A tracked name anywhere in the text targets that character. The command text is replaced by a short in-story line so the AI still replies.
+
+**AI tags** (removed from the visible text): `[ate 600]`, `[burn 300]`, `[train legs 2]`, `[day]`, `[gland +20]`, `[bust +2]`, `[lactating on|off]`, `[milk -300]`, `[mana +30 arms]`, `[curse add hunger]`, and stat tags like `[str +1]`. For someone else, put the name last (`[ate 300 Whitney]`) or first (`[Whitney: ate 300]`). Unnamed tags go to the default target.
+
+**Auto-detect from the player's text** (`CFG.AUTO`, `CFG.FUZZY`): eating (verbs, about 100 food words, quantities, meal names), exercise (regions, effort words, cardio), sleeping (with a 4-action cooldown), and inspection ("examine my chest", "step into the scanner"). It forgives typos with Damerau-Levenshtein distance, and short words cannot substitute a letter (so "lake" is not "cake"). The AI's own tag for the same thing is skipped through `s.auto`, so nothing is counted twice.
+
+**Multi-character:** "Whitney eats cake" goes to Whitney, "You share cake with Whitney" goes to both, and sleeping or `:day` advances everyone. With `HIDE_PLAYER` (or `:sheet you off`), unnamed commands and tags mean the first added character, and what the player does unnamed is not tracked.
+
+## Text the AI sees
+
+- Author's Note: one bracketed summary per character (only characters mentioned recently, up to `NPC_MAX`), a "never invent" line, and a one-turn inspection block after an `:inspect`.
+- `frontMemory`: a short hidden-tag reminder that also lists the tracked names.
+- Replies get a bracketed status line after commands and spotted actions (`CFG.STATUS`), and an inspection block after an inspect. The story card "Body sheet" (keys `bodysheet`, never triggered) and "bodysheet-name" cards hold each sheet in one `Label: value` per line.
+- Default note is about 60 tokens plus about 100 for the tag reminder.
+
+## Config keys (top of the Library)
+
+`PACE`, `PATTERN`, `LOOK`, `SUPPORT`, `ACTIVITY`, `KCAL_PER_KG`, `FAT_GAIN`, `FAT_LOSS`, `TAG_HELP`, `DESCRIBE`, `FUZZY`, `NPC_MAX`, `HIDE_PLAYER`, `CHARACTERS`, `AUTO`, `STATUS` (`off|commands|always`), `CARD_READBACK`, `START`, `FEATURES {milk, mana, curses}`.
+
+## How to test without AI Dungeon
+
+Load the Library and a hook script into a function scope, run turns, and inspect `state`. The pattern used all session:
+
+```js
+const src = lib + '\n' + hookScript.replace(/modifier\(text\)\s*$/, '') + '\nreturn modifier(text)'
+new Function('text','state','info','history','storyCards','addStoryCard','updateStoryCard','removeStoryCard', src)
+  (text, state, { actionCount }, history, cards, add, update, remove)
+```
+
+Useful scenarios: a plain turn with tags, commands, retry (same output slot twice must not double count), undo (same input slot again), stuck or missing `actionCount` with growing history, old-state upgrade, typo and wording lists for the detectors, multi-character targeting, and card creation and removal. All of these passed on the last version.
+
+## Confirmed in real play
+
+Input and Output run every turn, the Author's Note and story card are written, `:body` and auto-detected meals show a status line, and a full day (meals, squats, sleep) advanced correctly. The AI often invents numbers when it is not given facts, and the inspection block plus "never invent" line are the mitigation.
+
+## Open work
+
+1. `:sheet add` options: `muscle=`, `activity=`, and a mana multiplier, so athletes and mana-rich characters can start realistic. (Rue, a runner, was the motivating case.)
+2. Bra size mismatch for hand-entered sheets: bust minus underbust decides the cup, so 82/72 is 70AA, not 70B.
+3. A Context-tab script to strip the bracketed status and inspection lines from the history the AI sees (saves tokens and stops the AI imitating them).
+4. Floating stat panel as a userscript (desktop browsers only, reads the Body sheet cards, fragile if the site changes).
+5. Digestion queue (needs a clock: `[time +2h]` tags or fixed time per turn) and adaptation conditions (strain thresholds, mild to severe) are designed but not built.
+6. Tune AI tag reliability and calorie estimates. Consider an optional realism flag for the square-cube law (off by default).
+7. Optional scan-style cross-section view in the demo.
+
+## Characters so far
+
+- **Whitney** (starter scenario): 27, female anthropomorphic arctic wolf, 196 cm, 105 kg, 34% fat, bra 95D, waist 100, hips 128, pear pattern, curvy look, +2 CHA. Proud, charismatic, weak for sweets, models for a swimsuit magazine.
+- **Rue** (user's OC, adult): fox girl and runner, 168 cm, 54 kg, 18% fat, underbust 72, bust 87 for a real B, waist 60, hips 88, arm 24, thigh 49, gland 90, potential 200 to 520, secretly wishes for a fuller figure. Suggested setup: `:sheet add Rue height=168 weight=54 bodyfat=18 underbust=72 bust=87 waist=60 hips=88 arm=24 thigh=49 gland=90 potential=200 pattern=even look=athletic`, then `:set dex 13 Rue`.
+
+## Working style with this user
+
+Short, practical replies. Test before shipping. Change one thing at a time and confirm with a real turn. The user is on the free tier and cares about token cost, so keep the note small. Everything is private and personal.
