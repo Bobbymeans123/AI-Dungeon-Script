@@ -14,6 +14,7 @@ const CFG = {
   KCAL_PER_KG: 7700,     // energy in 1 kg of body tissue
   FAT_GAIN: 0.75,        // share of a surplus that becomes fat (the rest is lean tissue)
   FAT_LOSS: 0.8,         // share of a deficit that comes from fat
+  TAG_PLACE: 'note',     // where the hidden-tag reminder goes: 'note' (Author's Note, default, least likely to be echoed) | 'front' (last line of the context, strongest)
   TAG_HELP: true,        // tell the AI about the hidden tags at the end of the context (turn off to save tokens)
   DESCRIBE: true,        // add a 'Look:' line with shape and size adjectives to the AI's note (edit the words in LOOK_WORDS below)
   FUZZY: true,           // forgive typos and odd wording when spotting actions in what you type
@@ -24,7 +25,9 @@ const CFG = {
   SILLY_PACE: 6,
   SILLY_FAT_GAIN: 0.9,   // share of a surplus that becomes fat under SILLY (more forgiving: less of it is lean)
   PLAYER: null,          // seeds YOUR sheet once, on the first turn: { name, start: { ... }, pattern, look, bonus: {}, set: { dex: 12 } }. HIDE_PLAYER must be false to see it
-  LAZY: false,           // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
+  PLAYER_CARD: false,    // true = a "Player setup" story card (name= height= weight= ...) fills in your own sheet when you edit it. Only the custom preset turns it on
+  PROBE: false,         // true = the :probe command exists (writes a story card describing what the hooks receive). Only the custom preset turns it on
+  LAZY: false,          // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
   YOU_NAME: '',          // who "you" means in the AI's narration when your own sheet is hidden, e.g. 'Rue'. Empty = "you" is not attributed
   AUTO: true,           // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
   STATUS: 'commands',    // add a status line to the reply: 'off' | 'commands' (commands and spotted actions) | 'always'
@@ -532,7 +535,23 @@ function parseOne(t) {   // one tag such as "[ate 600]" -> an event, or null if 
   }
   return null
 }
+const TAG_MARK = '[Hidden tags'   // the opening words of our own reminder
+function stripEcho(text) {   // if the AI repeats our reminder, take it out (with its nested [tags]) before anything is read from it
+  let i = text.toLowerCase().indexOf(TAG_MARK.toLowerCase())
+  while (i >= 0) {
+    let depth = 0, j = i
+    for (; j < text.length; j++) {
+      if (text[j] === '[') depth++
+      else if (text[j] === ']' && --depth === 0) break
+    }
+    if (j >= text.length) { j = text.indexOf('\n', i); if (j < 0) j = text.length - 1 }   // never closed: drop that line only
+    text = text.slice(0, i) + text.slice(j + 1)
+    i = text.toLowerCase().indexOf(TAG_MARK.toLowerCase())
+  }
+  return text
+}
 function parseTags(text) {
+  text = stripEcho(text)
   const events = []
   const clean = text.replace(/\[[^\[\]\n]{1,80}\]/g, (tag) => {
     let who = '', t = tag
@@ -972,16 +991,40 @@ const CMD_RE = [
   ['reset', /:reset[ \t]+confirm/i],
   ['inspect', new RegExp(':(?:inspect|scan)(?:[ \\t]+' + PART_RE + ')?\\b', 'i')],
   ['body', /:body\b/i],
-  ['help', /:help\b/i]
+  ['help', /:help\b/i],
+  ['probe', /:probe\b/i]   // only when CFG.PROBE is on (the custom build); otherwise the text is left alone
 ]
 function parseCommand(text) {
   for (let i = 0; i < CMD_RE.length; i++) {
+    if (CMD_RE[i][0] === 'probe' && !CFG.PROBE) continue
     const m = text.match(CMD_RE[i][1])
     if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : whoIn(text) }
   }
   return null
 }
 const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal [Name], :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+// key=value options of a sheet, shared by ":sheet add Name ..." and the Player setup card.
+// Lenient (the :sheet add way): unknown or bad parts are ignored. strict: bad parts are collected in bad[] so they can be reported.
+// Blank values ("height=") always mean "keep the default".
+function parseSheetOpts(str, strict) {
+  const st = {}, o = {}, bad = []
+  String(str || '').trim().split(/\s+/).filter(Boolean).forEach((p) => {
+    const i = p.indexOf('=')
+    if (i < 0) { if (strict) bad.push(p); return }
+    const key = p.slice(0, i).toLowerCase(), val = p.slice(i + 1)
+    if (val === '') return
+    if (key === 'pattern') { if (PATTERNS[val]) o.pattern = val; else if (strict) bad.push(p) }
+    else if (key === 'look') { if (LOOKS.indexOf(val) >= 0) o.look = val; else if (strict) bad.push(p) }
+    else if (key === 'name' && strict) { if (/^[A-Za-z][\w-]*$/.test(val)) o.name = val; else bad.push(p) }
+    else if (CFG.START[key] !== undefined) {
+      if (!strict) { if (!isNaN(parseFloat(val))) st[key] = parseFloat(val); return }
+      const lim = LIMITS[key] || [0, 600], n = parseFloat(val)
+      if (/^\d+(?:\.\d+)?$/.test(val) && n >= lim[0] && n <= lim[1]) st[key] = n
+      else bad.push(p)
+    } else if (strict) bad.push(p)
+  })
+  return { st: st, o: o, bad: bad }
+}
 function runCommand(cmd) {
   const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
   const s = sheetOf(key), m = cmd.m
@@ -1079,14 +1122,8 @@ function runCommand(cmd) {
     case 'reset': state.bt = newPlayer(); note = 'Tracker reset'; break
     case 'sheetadd': {
       const name = m[1], k = name.toLowerCase()
-      const st = {}, o = {}
-      String(m[2] || '').trim().split(/\s+/).filter(Boolean).forEach((p) => {
-        const kv = p.split('=')
-        const key2 = kv[0].toLowerCase(), val = kv[1]
-        if (key2 === 'pattern' && PATTERNS[val]) o.pattern = val
-        else if (key2 === 'look' && LOOKS.indexOf(val) >= 0) o.look = val
-        else if (CFG.START[key2] !== undefined && !isNaN(parseFloat(val))) st[key2] = parseFloat(val)
-      })
+      const parsed = parseSheetOpts(m[2])
+      const st = parsed.st, o = parsed.o
       o.name = name
       state.npcs[k] = newBT(st, o)
       note = 'Added a sheet for ' + name + (Object.keys(st).length ? ' (' + Object.keys(st).map((x) => x + ' ' + st[x]).join(', ') + ')' : '')
@@ -1102,6 +1139,11 @@ function runCommand(cmd) {
     }
     case 'sheetlist': note = 'Sheets: You' + npcKeys().map((k) => ', ' + state.npcs[k].name).join('') + (state.bt_hideYou ? ' (your own sheet is hidden)' : ''); state.bt_touched = ['']; break
     case 'sheetyou': state.bt_hideYou = m[1].toLowerCase() === 'off'; note = 'Your own sheet is ' + (state.bt_hideYou ? 'hidden' : 'shown'); state.bt_touched = ['']; break
+    case 'probe': {   // changes no sheet: only writes the "probe" story card
+      note = probeCard()
+      line = '\n> You take a long look around.\n'
+      break
+    }
     case 'help': state.bt_help = true; break
     default: break   // body
   }
@@ -1243,19 +1285,24 @@ function refreshMemory(recent) {
     const who = state.bt_inspectWho || '', t = sheetOf(who)
     if (t) note += ' [Describe this in detail using only these facts: ' + (who ? t.name + ': ' : '') + inspectPart(t, state.bt_inspect) + ']'
   }
-  state.memory.authorsNote = note.trim()
-  // the tag reminder goes at the very end of the context, where the AI pays the most attention
+  // the tag reminder: short, and by default inside the Author's Note rather than the last line of the context, where the AI copies it most
+  let tags = ''
   if (CFG.TAG_HELP) {
     const F = CFG.FEATURES
-    let t = '[Hidden tags: after any eating, exercise or sleeping, end your reply with tags and never mention them: [ate 600] kcal eaten, [burn 300] hard exercise, [train legs 2] (chest, arms, core, glutes, legs), [day] when a new day begins, [gland +20] or [bust +2] for magic only'
-    if (F.milk) t += ', [lactating on] or [lactating off], [milk -300] drained'
-    if (F.mana) t += ', [mana +30 arms] infused, [mana -20] spent'
-    if (F.curses) t += ', [curse add hunger]'
-    t += '.'
+    tags = TAG_MARK + ', never mention: after eating, exercise or sleep end with: [ate 600] [burn 300] [train legs 2] [day] [gland +20]'
+    if (F.milk) tags += ' [milk -300]'
+    if (F.mana) tags += ' [mana +30 arms]'
+    if (F.curses) tags += ' [curse add hunger]'
+    tags += '.'
     const names = npcKeys().map((k) => state.npcs[k].name)
-    if (names.length) t += ' Also tracked: ' + names.join(', ') + '. When a tag is about them, put their name last, like [ate 300 ' + names[0] + '].'
-    state.memory.frontMemory = t + ']'
+    if (names.length) tags += ' Others: name last, [ate 300 ' + names[0] + '].'
+    tags += ']'
+  }
+  if (CFG.TAG_PLACE === 'front') {   // the very end of the context (strongest, but most likely to be echoed)
+    state.memory.authorsNote = note.trim()
+    state.memory.frontMemory = tags
   } else {
+    state.memory.authorsNote = (note + ' ' + tags).trim()
     state.memory.frontMemory = ''
   }
 }
@@ -1342,7 +1389,51 @@ function cardValues(str) {
   })
   return out
 }
+// ---------- Player setup card (custom build): fill in your own sheet by editing one story card ----------
+// Created once on the first turn with a blank template. When its text differs from what was last applied, the values are
+// applied to your sheet (rebuilt like :sheet add while nothing has happened yet, otherwise like :set), once per edit.
+// Blank values keep the default, a bad value is skipped and named in the status line. The keys never appear in the story.
+const SETUP_TYPE = 'Player setup', SETUP_KEYS = 'playersetup'
+const SETUP_TEMPLATE = 'name= height= weight= bodyfat= underbust= bust= waist= hips= pattern=even look=athletic gland= potential='
+function playerPristine(s) {   // nothing has happened to this sheet yet
+  return s.day === 1 && s.eaten === null && !s.burned && REGIONS.every((r) => !s.train[r]) && !s.fuelLog.length && AB.every((a) => !s.bonus[a]) &&
+    MEAS.every((m) => !s.adj[m]) && s.gland === s.gland0 && s.glandMax === s.start.potential && !s.sag && !s.lact.on
+}
+function applyPlayerCard() {
+  state.bt_cardNote = ''
+  const cards = typeof storyCards !== 'undefined' && storyCards ? storyCards : []
+  let entry = null
+  for (let i = 0; i < cards.length; i++) { if (cards[i].type === SETUP_TYPE && cards[i].keys === SETUP_KEYS) { entry = String(cards[i].entry || ''); break } }
+  if (entry === null) {
+    if (state.bt_setupMade) return   // you deleted it: it is not made again
+    addStoryCard(SETUP_KEYS, SETUP_TEMPLATE, SETUP_TYPE)
+    entry = SETUP_TEMPLATE
+  }
+  state.bt_setupMade = true
+  const s = state.bt
+  if (s.cardApplied === entry) return   // unchanged since last time: do not apply again (later :set changes stay)
+  const r = parseSheetOpts(entry, true)
+  const did = Object.keys(r.st).concat(Object.keys(r.o))
+  if (did.length) {
+    if (playerPristine(s)) {   // rebuild exactly like :sheet add would
+      const n = newBT(Object.assign({}, s.start, r.st), { name: r.o.name || s.name, pattern: r.o.pattern || s.pattern, look: r.o.look || s.look })
+      n.pace = s.pace; n.paceSet = s.paceSet; n.support = s.support
+      state.bt = n
+    } else {   // the story has moved on: the same as typing :set for each value
+      Object.keys(r.st).forEach((k) => setValue(s, k, r.st[k]))
+      if (r.o.pattern) s.pattern = r.o.pattern
+      if (r.o.look) s.look = r.o.look
+      if (r.o.name) s.name = r.o.name
+    }
+  }
+  state.bt.cardApplied = entry
+  const notes = []
+  if (did.length && entry !== SETUP_TEMPLATE) notes.push('Player setup applied: ' + (did.length > 4 ? did.length + ' values' : did.join(', ')))
+  if (r.bad.length) notes.push('Player setup skipped: ' + r.bad.join(' '))
+  state.bt_cardNote = notes.join(' | ')
+}
 function readCard() {
+  if (CFG.PLAYER_CARD) applyPlayerCard()
   if (!CFG.CARD_READBACK || !state.bt_card) return
   const cards = typeof storyCards !== 'undefined' ? storyCards : []
   for (let i = 0; i < cards.length; i++) {
@@ -1353,4 +1444,46 @@ function readCard() {
     Object.keys(now).forEach((k) => { if (was[k] !== undefined && Math.abs(now[k] - was[k]) > 0.049) setValue(state.bt, k, now[k]) })
     return
   }
+}
+
+// ---------- :probe (custom build only): what do the hooks receive? ----------
+// Writes one story card with keys "probe" listing info, the names of the state keys, any state that looks like
+// character/player info, history[0] and the last two history entries in full, and the other story cards.
+// It changes no sheet. Read it in AI Dungeon's story card list (type "Probe"), then delete it.
+function probeCard() {
+  const cut = (v, n) => {
+    let t
+    try { t = typeof v === 'string' ? v : JSON.stringify(v) } catch (e) { t = String(v) }
+    if (t === undefined) return 'undefined'
+    return t.length > n ? t.slice(0, n) + '...(+' + (t.length - n) + ' more characters)' : t
+  }
+  const L = ['PROBE written at action ' + turnNo()]
+  L.push('', '--- info (key = value) ---')
+  if (typeof info !== 'undefined' && info) Object.keys(info).forEach((k) => L.push(k + ' = ' + cut(info[k], 300)))
+  else L.push('info is missing')
+  L.push('', '--- state keys (names only) ---', Object.keys(state).join(', '))
+  if (state.memory && typeof state.memory === 'object') L.push('state.memory keys: ' + Object.keys(state.memory).join(', '))
+  L.push('', '--- does state hold character or player info? ---')
+  const guess = ['character', 'player', 'name', 'characterName', 'playerName', 'you', 'class', 'hero', 'persona', 'user', 'protagonist']
+  guess.forEach((k) => L.push('state.' + k + ': ' + (state[k] === undefined ? 'absent' : 'PRESENT = ' + cut(state[k], 300))))
+  Object.keys(state).filter((k) => /char|player|name|class|hero|persona|user|protag/i.test(k) && guess.indexOf(k) < 0).forEach((k) => L.push('state.' + k + ' (found by name) = ' + cut(state[k], 300)))
+  const H = typeof history !== 'undefined' && history ? history : []
+  L.push('', '--- history: ' + H.length + ' entries ---')
+  const shown = []
+  ;[0, H.length - 2, H.length - 1].forEach((i) => {
+    const a = H[i]
+    if (!a || shown.indexOf(i) >= 0) return
+    shown.push(i)
+    const txt = typeof a.text === 'string' ? a.text : ''
+    L.push('', 'history[' + i + '] type=' + a.type + ', length=' + txt.length + ', fields=' + Object.keys(a).join(','), txt)
+  })
+  const cards = typeof storyCards !== 'undefined' && storyCards ? storyCards : []
+  L.push('', '--- story cards: ' + cards.length + ' (type | keys | start of entry) ---')
+  cards.forEach((c) => { if (c.keys !== 'probe') L.push((c.type || '') + ' | ' + c.keys + ' | ' + cut(String(c.entry || '').slice(0, 160), 160)) })
+  const entry = L.join('\n')
+  let idx = -1
+  for (let i = 0; i < cards.length; i++) { if (cards[i].keys === 'probe') { idx = i; break } }
+  if (idx === -1) addStoryCard('probe', entry, 'Probe')
+  else updateStoryCard(idx, 'probe', entry, 'Probe')
+  return 'Probe card written (story card "probe")'
 }

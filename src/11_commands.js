@@ -22,16 +22,40 @@ const CMD_RE = [
   ['reset', /:reset[ \t]+confirm/i],
   ['inspect', new RegExp(':(?:inspect|scan)(?:[ \\t]+' + PART_RE + ')?\\b', 'i')],
   ['body', /:body\b/i],
-  ['help', /:help\b/i]
+  ['help', /:help\b/i],
+  ['probe', /:probe\b/i]   // only when CFG.PROBE is on (the custom build); otherwise the text is left alone
 ]
 function parseCommand(text) {
   for (let i = 0; i < CMD_RE.length; i++) {
+    if (CMD_RE[i][0] === 'probe' && !CFG.PROBE) continue
     const m = text.match(CMD_RE[i][1])
     if (m) return { name: CMD_RE[i][0], m: m, who: CMD_RE[i][0].indexOf('sheet') === 0 ? [] : whoIn(text) }
   }
   return null
 }
 const HELP = 'Other characters: :sheet add Name [weight=68 bodyfat=30 ...], :sheet remove Name, :sheet list, :sheet you off|on. Put a name on any command to target them, like :eat 600 Name. Commands: :set stat value, :eat kcal, :undo meal [Name], :burn kcal, :train area [1-3], :day [n], :gland +/-cc, :potential +/-cc, :lactate on/off, :milk ml, :mana +/-n [area], :curse add/remove hunger|leech|forced|bias [area], :support on/off, :look curvy/athletic/soft/off, :pace n, :inspect [chest|arms|core|glutes|legs|body], :scan, :body, :help. Stats: ' + STAT_KEYS.join(' ')
+// key=value options of a sheet, shared by ":sheet add Name ..." and the Player setup card.
+// Lenient (the :sheet add way): unknown or bad parts are ignored. strict: bad parts are collected in bad[] so they can be reported.
+// Blank values ("height=") always mean "keep the default".
+function parseSheetOpts(str, strict) {
+  const st = {}, o = {}, bad = []
+  String(str || '').trim().split(/\s+/).filter(Boolean).forEach((p) => {
+    const i = p.indexOf('=')
+    if (i < 0) { if (strict) bad.push(p); return }
+    const key = p.slice(0, i).toLowerCase(), val = p.slice(i + 1)
+    if (val === '') return
+    if (key === 'pattern') { if (PATTERNS[val]) o.pattern = val; else if (strict) bad.push(p) }
+    else if (key === 'look') { if (LOOKS.indexOf(val) >= 0) o.look = val; else if (strict) bad.push(p) }
+    else if (key === 'name' && strict) { if (/^[A-Za-z][\w-]*$/.test(val)) o.name = val; else bad.push(p) }
+    else if (CFG.START[key] !== undefined) {
+      if (!strict) { if (!isNaN(parseFloat(val))) st[key] = parseFloat(val); return }
+      const lim = LIMITS[key] || [0, 600], n = parseFloat(val)
+      if (/^\d+(?:\.\d+)?$/.test(val) && n >= lim[0] && n <= lim[1]) st[key] = n
+      else bad.push(p)
+    } else if (strict) bad.push(p)
+  })
+  return { st: st, o: o, bad: bad }
+}
 function runCommand(cmd) {
   const key = (cmd.who && cmd.who[0]) || (cmd.name.indexOf('sheet') === 0 ? '' : defKey())
   const s = sheetOf(key), m = cmd.m
@@ -129,14 +153,8 @@ function runCommand(cmd) {
     case 'reset': state.bt = newPlayer(); note = 'Tracker reset'; break
     case 'sheetadd': {
       const name = m[1], k = name.toLowerCase()
-      const st = {}, o = {}
-      String(m[2] || '').trim().split(/\s+/).filter(Boolean).forEach((p) => {
-        const kv = p.split('=')
-        const key2 = kv[0].toLowerCase(), val = kv[1]
-        if (key2 === 'pattern' && PATTERNS[val]) o.pattern = val
-        else if (key2 === 'look' && LOOKS.indexOf(val) >= 0) o.look = val
-        else if (CFG.START[key2] !== undefined && !isNaN(parseFloat(val))) st[key2] = parseFloat(val)
-      })
+      const parsed = parseSheetOpts(m[2])
+      const st = parsed.st, o = parsed.o
       o.name = name
       state.npcs[k] = newBT(st, o)
       note = 'Added a sheet for ' + name + (Object.keys(st).length ? ' (' + Object.keys(st).map((x) => x + ' ' + st[x]).join(', ') + ')' : '')
@@ -152,6 +170,11 @@ function runCommand(cmd) {
     }
     case 'sheetlist': note = 'Sheets: You' + npcKeys().map((k) => ', ' + state.npcs[k].name).join('') + (state.bt_hideYou ? ' (your own sheet is hidden)' : ''); state.bt_touched = ['']; break
     case 'sheetyou': state.bt_hideYou = m[1].toLowerCase() === 'off'; note = 'Your own sheet is ' + (state.bt_hideYou ? 'hidden' : 'shown'); state.bt_touched = ['']; break
+    case 'probe': {   // changes no sheet: only writes the "probe" story card
+      note = probeCard()
+      line = '\n> You take a long look around.\n'
+      break
+    }
     case 'help': state.bt_help = true; break
     default: break   // body
   }

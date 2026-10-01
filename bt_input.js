@@ -42,6 +42,11 @@ const modifier = (text) => {
     }
   }
 
+  if (state.bt_cardNote) {   // the Player setup card was applied (or had a bad value): say so in the status line
+    state.bt_note = (state.bt_note ? state.bt_note + ' | ' : '') + state.bt_cardNote
+    state.bt_flag = true
+    state.bt_cardNote = ''
+  }
   refreshMemory(recentText(text))
   return { text }
 }

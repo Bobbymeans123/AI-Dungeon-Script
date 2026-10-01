@@ -8,6 +8,7 @@ const CFG = {
   KCAL_PER_KG: 7700,     // energy in 1 kg of body tissue
   FAT_GAIN: 0.75,        // share of a surplus that becomes fat (the rest is lean tissue)
   FAT_LOSS: 0.8,         // share of a deficit that comes from fat
+  TAG_PLACE: 'note',     // where the hidden-tag reminder goes: 'note' (Author's Note, default, least likely to be echoed) | 'front' (last line of the context, strongest)
   TAG_HELP: true,        // tell the AI about the hidden tags at the end of the context (turn off to save tokens)
   DESCRIBE: true,        // add a 'Look:' line with shape and size adjectives to the AI's note (edit the words in LOOK_WORDS below)
   FUZZY: true,           // forgive typos and odd wording when spotting actions in what you type
@@ -18,7 +19,9 @@ const CFG = {
   SILLY_PACE: 6,
   SILLY_FAT_GAIN: 0.9,   // share of a surplus that becomes fat under SILLY (more forgiving: less of it is lean)
   PLAYER: null,          // seeds YOUR sheet once, on the first turn: { name, start: { ... }, pattern, look, bonus: {}, set: { dex: 12 } }. HIDE_PLAYER must be false to see it
-  LAZY: false,           // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
+  PLAYER_CARD: false,    // true = a "Player setup" story card (name= height= weight= ...) fills in your own sheet when you edit it. Only the custom preset turns it on
+  PROBE: false,         // true = the :probe command exists (writes a story card describing what the hooks receive). Only the custom preset turns it on
+  LAZY: false,          // true = typed and narrated meals use flat amounts: meal 700, snack 300, sweet 400 kcal, scaled by size words (massive x1.5, small x0.5). :eat stays exact
   YOU_NAME: '',          // who "you" means in the AI's narration when your own sheet is hidden, e.g. 'Rue'. Empty = "you" is not attributed
   AUTO: true,           // also spot eating, exercise and sleeping in what YOU type, so tracking works even if the AI never writes tags
   STATUS: 'commands',    // add a status line to the reply: 'off' | 'commands' (commands and spotted actions) | 'always'

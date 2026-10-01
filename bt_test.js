@@ -337,6 +337,92 @@ if (require.main === module) {
   e = C(); turn(e, 'You look around.', fx('ice_cream_scene'))
   eq('custom: ice_cream_scene counts nothing', pw(e), '0/0')
 
+  // ---- :probe (custom build only) ----
+  const sheets = (x) => JSON.stringify([x.state.bt, x.state.npcs], (k, v) => (k === 'auto' ? undefined : v))
+  const probes = (x) => x.cards.filter((c) => c.keys === 'probe')
+  e = C(); const before = sheets(e); const pr = turn(e, ':probe', 'ok')
+  const card = (probes(e)[0] || {}).entry || ''
+  eq('probe: writes one story card with keys "probe", type "Probe"', probes(e).length + ' ' + (probes(e)[0] || {}).type, '1 Probe')
+  eq('probe: card lists info, state keys, history[0] and the last entries', /PROBE written/.test(card) && /actionCount = \d/.test(card) && /state keys \(names only\)/.test(card) && /history\[0\] type=do, length=\d+/.test(card) && /You look around\./.test(card) && /--- story cards:/.test(card), true)
+  eq('probe: says state.character / state.player are absent', /state\.character: absent/.test(card) && /state\.player: absent/.test(card), true)
+  eq('probe: changes no sheet', sheets(e) === before, true)
+  eq('probe: the command is replaced by an in-story line and the status says so', /Probe card written/.test(pr.out) && pr.inp.indexOf(':probe') < 0, true)
+  e = C(); e.state.character = { name: 'Zed', class: 'rogue' }; e.state.playerName = 'Zed'; turn(e, ':probe', 'ok')
+  const card2 = (probes(e)[0] || {}).entry || ''
+  eq('probe: shows state.character and a state key found by name when they exist', /state\.character: PRESENT = \{"name":"Zed","class":"rogue"\}/.test(card2) && /state\.playerName \(found by name\)|state\.playerName: PRESENT/.test(card2), true)
+  e = C(); turn(e, ':probe', 'ok'); turn(e, ':probe', 'ok')
+  eq('probe: running it again updates the same card (still one)', probes(e).length, 1)
+  e = C(); for (let i = 0; i < 4; i++) turn(e, 'You wait.', 'Time passes.'); turn(e, ':probe', 'ok')
+  eq('probe: shows history[0] and the last two entries (no more)', ((probes(e)[0] || {}).entry.match(/^history\[\d+\] type=/gm) || []).length, 3)
+  e = fresh(); const rp = turn(e, ':probe', 'ok')
+  eq('probe: the Rue build ignores :probe (no card, text left alone)', probes(e).length + ' ' + (rp.inp === ':probe'), '0 true')
+
+  // ---- Player setup card (custom build only) ----
+  const setupCard = (x) => x.cards.find((c) => c.type === 'Player setup')
+  const TPL = 'name= height= weight= bodyfat= underbust= bust= waist= hips= pattern=even look=athletic gland= potential='
+  const stat = (x) => { const o = turn(x, ':body', 'Time passes.').out; const l = lines({ out: o })[0] || ''; return { out: o, line: l, cm: (l.match(/([\d.]+) cm/) || [])[1], kg: (l.match(/([\d.]+) kg/) || [])[1], fat: (l.match(/([\d.]+)% fat/) || [])[1], head: (l.match(/^\[([^|]*)\|/) || [])[1] } }
+  e = C()
+  eq('card: created once on the first turn, type "Player setup", keys "playersetup", one-line template', e.cards.filter((c) => c.type === 'Player setup').length + ' ' + setupCard(e).keys + ' ' + (setupCard(e).entry === TPL) + ' ' + (setupCard(e).entry.indexOf('\n') < 0), '1 playersetup true true')
+  turn(e, 'You wait.', 'ok'); turn(e, 'You wait.', 'ok')
+  eq('card: not created again on later turns', e.cards.filter((c) => c.type === 'Player setup').length, 1)
+  e = C(); const sNo = turn(e, 'You wait.', 'Time passes.').out
+  eq('card: untouched template changes nothing visible (165 cm, 60 kg, no status noise)', /Player setup/.test(sNo) + ' ' + (e.state.bt.height || e.state.bt.start.height) + ' ' + e.state.bt.start.weight + ' ' + e.state.bt.pattern + ' ' + e.state.bt.look, 'false 165 60 even athletic')
+  e = C(); const w0 = JSON.stringify(e.state.npcs.whitney, (k, v) => (k === 'auto' ? undefined : v))
+  setupCard(e).entry = 'name=Zed height=170 weight=60 bodyfat=22 underbust=74 bust=90 waist=70 hips=96 pattern=even look=athletic gland=100 potential=180'
+  let sc = stat(e)
+  eq('card values reach the player sheet (170 cm, 60 kg, 22% fat, named Zed in the status line)', [sc.cm, sc.kg, sc.fat, (sc.head || '').trim()].join(' '), '170 60 22 Zed')
+  eq('card: the edit is announced once in the status line', /Player setup applied: 12 values/.test(sc.out) + ' ' + /Player setup/.test(stat(e).out), 'true false')
+  eq('card: Whitney is untouched', JSON.stringify(e.state.npcs.whitney, (k, v) => (k === 'auto' ? undefined : v)) === w0, true)
+  eq('card: gland and potential applied', e.state.bt.gland + '/' + e.state.bt.glandMax, '100/180')
+  turn(e, ':set weight 65', 'ok'); sc = stat(e)
+  eq('card unchanged: it is NOT re-applied (a later :set weight 65 stays)', sc.kg, '65')
+  setupCard(e).entry = setupCard(e).entry.replace('weight=60', 'weight=70'); sc = stat(e)
+  eq('card edited: applied once (weight 70, height kept at 170)', sc.kg + ' ' + sc.cm, '70 170')
+  turn(e, ':set weight 66', 'ok'); sc = stat(e)
+  eq('card: after that edit, later :set changes stay (66)', sc.kg, '66')
+  e = C(); setupCard(e).entry = 'weight=abc height=170 hight=180 bust=900 look=weird name=9bad'
+  sc = stat(e)
+  eq('bad values are skipped and named, good ones still apply', sc.cm + ' ' + sc.kg + ' ' + /Player setup skipped: weight=abc hight=180 bust=900 look=weird name=9bad/.test(sc.out) + ' ' + /Player setup applied: height/.test(sc.out), '170 60 true true')
+  e = C(); setupCard(e).entry = 'weight 60'; sc = stat(e)
+  eq('a part without "=" is skipped ("weight 60")', /Player setup skipped: weight/.test(sc.out) + ' ' + sc.kg, 'true 60')
+  e = C(); setupCard(e).entry = TPL.replace('height=', 'height=185'); turn(e, 'You eat a burger.', 'ok'); const eatenBefore = e.state.bt.eaten
+  setupCard(e).entry = 'weight=80'; sc = stat(e)
+  eq('card edit mid-story applies like :set and keeps what happened (eaten kept, weight 80)', eatenBefore + ' ' + e.state.bt.eaten + ' ' + sc.kg + ' ' + sc.cm, '700 700 80 185')
+  e = C(); setupCard(e).entry = 'name=Zed weight=60'; turn(e, 'You wait.', 'ok'); turn(e, 'Zed eats a burger.', 'ok'); turn(e, 'You look around.', 'You order a pizza and wait.')
+  eq('a named player (Zed): typed "Zed eats" and narrated "You order" both go to the player (700 + 700)', pw(e), '1400/0')
+  e = C(); setupCard(e).entry = 'weight=60 height=170'; turn(e, 'You wait.', 'ok')
+  const undone = undo(e, 'You wait.', 'ok')
+  eq('card applied in a turn that is then undone and replayed: still applied once', (e.state.bt.start.height) + ' ' + /Player setup/.test(undone.out), '170 true')
+  e = C(); e.cards.splice(e.cards.indexOf(setupCard(e)), 1); turn(e, 'You wait.', 'ok'); turn(e, 'You wait.', 'ok')
+  eq('card deleted by the player: not made again', e.cards.filter((c) => c.type === 'Player setup').length, 0)
+  e = fresh(); turn(e, 'You wait.', 'ok')
+  eq('Rue build: no Player setup card, Rue unchanged', e.cards.filter((c) => c.type === 'Player setup').length + ' ' + /168 cm, 54 kg, 18% fat/.test(turn(e, ':body', 'ok').out || ''), '0 false')
+  e = fresh('/*PRESET*/'); turn(e, 'You wait.', 'ok')
+  eq('Rue preset build: no Player setup card, Rue keeps 168 cm, 54 kg', e.cards.filter((c) => c.type === 'Player setup').length + ' ' + /168 cm, 54 kg, 18% fat/.test(turn(e, ':body', 'ok').out), '0 true')
+
+  // ---- tag reminder: shorter, in the Author's Note, echo stripped ----
+  const OLD_REMINDER_CHARS = 484   // the old reminder, ~121 tokens (characters / 4)
+  e = fresh(P); const mem = e.state.memory
+  const remind = mem.authorsNote.slice(mem.authorsNote.indexOf('[Hidden tags'))
+  eq('reminder: lives in the Author\'s Note, frontMemory is empty', mem.authorsNote.indexOf('[Hidden tags') >= 0 && mem.frontMemory === '', true)
+  eq('reminder: much shorter than the old 484 chars (now <= 230)', remind.length <= 230 && remind.length < OLD_REMINDER_CHARS / 2, true)
+  eq('reminder: still teaches ate/burn/train/day/gland/milk/mana/curse and "name last"', /\[ate 600\].*\[burn 300\].*\[train legs 2\].*\[day\].*\[gland \+20\].*\[milk -300\].*\[mana \+30 arms\].*\[curse add hunger\].*name last, \[ate 300 Whitney\]/.test(remind), true)
+  e = fresh(P + ';CFG.TAG_PLACE = "front"')
+  eq('reminder: TAG_PLACE "front" puts it back in frontMemory only', e.state.memory.frontMemory.indexOf('[Hidden tags') === 0 && e.state.memory.authorsNote.indexOf('[Hidden tags') < 0, true)
+  e = fresh(P + ';CFG.TAG_HELP = false')
+  eq('reminder: TAG_HELP off = no reminder anywhere', e.state.memory.authorsNote.indexOf('[Hidden tags') < 0 && e.state.memory.frontMemory === '', true)
+  // if the AI echoes the reminder, it is removed and its example tags are not counted
+  const echo = remind
+  e = fresh(P); const ec = turn(e, 'You wait.', 'The room is quiet.\n\n' + echo + '\n\nWhitney sits down.')
+  eq('echo: the echoed reminder is removed from the reply, the story stays', /Hidden tags|\[ate 600\]/.test(ec.out) + ' ' + /The room is quiet\./.test(ec.out) + ' ' + /Whitney sits down\./.test(ec.out), 'false true true')
+  eq('echo: its example tags count nothing ([ate 600] [burn 300] ...)', pw(e), '0/0')
+  e = fresh(P); const ec2 = turn(e, 'You wait.', 'Whitney orders a burger. [ate 700 Whitney]\n\n' + echo)
+  eq('echo: a real tag next to an echo still counts once (700)', pw(e) + ' ' + /Hidden tags/.test(ec2.out), '0/700 false')
+  e = fresh(P); const ec3 = turn(e, 'You wait.', 'Story line one.\n[Hidden tags, never mention: after eating end with: [ate 600\nStory line two continues.')
+  eq('echo: an unfinished echo drops only its own line', /Hidden tags/.test(ec3.out) + ' ' + /Story line one\./.test(ec3.out) + ' ' + /Story line two continues\./.test(ec3.out), 'false true true')
+  e = fresh(P); const ec4 = turn(e, 'You wait.', 'She smiles [hidden TAGS: ate [ate 5] ] and waves.')
+  eq('echo: matched without caring about case', /hidden tags|\[ate/i.test(ec4.out) + ' ' + /She smiles/.test(ec4.out) + ' ' + /and waves\./.test(ec4.out), 'false true true')
+
   console.log(fail ? fail + ' FAILED' : 'all passed')
   process.exit(fail ? 1 : 0)
 }

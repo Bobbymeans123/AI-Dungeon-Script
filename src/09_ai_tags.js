@@ -19,7 +19,23 @@ function parseOne(t) {   // one tag such as "[ate 600]" -> an event, or null if 
   }
   return null
 }
+const TAG_MARK = '[Hidden tags'   // the opening words of our own reminder
+function stripEcho(text) {   // if the AI repeats our reminder, take it out (with its nested [tags]) before anything is read from it
+  let i = text.toLowerCase().indexOf(TAG_MARK.toLowerCase())
+  while (i >= 0) {
+    let depth = 0, j = i
+    for (; j < text.length; j++) {
+      if (text[j] === '[') depth++
+      else if (text[j] === ']' && --depth === 0) break
+    }
+    if (j >= text.length) { j = text.indexOf('\n', i); if (j < 0) j = text.length - 1 }   // never closed: drop that line only
+    text = text.slice(0, i) + text.slice(j + 1)
+    i = text.toLowerCase().indexOf(TAG_MARK.toLowerCase())
+  }
+  return text
+}
 function parseTags(text) {
+  text = stripEcho(text)
   const events = []
   const clean = text.replace(/\[[^\[\]\n]{1,80}\]/g, (tag) => {
     let who = '', t = tag

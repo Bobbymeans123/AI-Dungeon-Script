@@ -67,19 +67,24 @@ function refreshMemory(recent) {
     const who = state.bt_inspectWho || '', t = sheetOf(who)
     if (t) note += ' [Describe this in detail using only these facts: ' + (who ? t.name + ': ' : '') + inspectPart(t, state.bt_inspect) + ']'
   }
-  state.memory.authorsNote = note.trim()
-  // the tag reminder goes at the very end of the context, where the AI pays the most attention
+  // the tag reminder: short, and by default inside the Author's Note rather than the last line of the context, where the AI copies it most
+  let tags = ''
   if (CFG.TAG_HELP) {
     const F = CFG.FEATURES
-    let t = '[Hidden tags: after any eating, exercise or sleeping, end your reply with tags and never mention them: [ate 600] kcal eaten, [burn 300] hard exercise, [train legs 2] (chest, arms, core, glutes, legs), [day] when a new day begins, [gland +20] or [bust +2] for magic only'
-    if (F.milk) t += ', [lactating on] or [lactating off], [milk -300] drained'
-    if (F.mana) t += ', [mana +30 arms] infused, [mana -20] spent'
-    if (F.curses) t += ', [curse add hunger]'
-    t += '.'
+    tags = TAG_MARK + ', never mention: after eating, exercise or sleep end with: [ate 600] [burn 300] [train legs 2] [day] [gland +20]'
+    if (F.milk) tags += ' [milk -300]'
+    if (F.mana) tags += ' [mana +30 arms]'
+    if (F.curses) tags += ' [curse add hunger]'
+    tags += '.'
     const names = npcKeys().map((k) => state.npcs[k].name)
-    if (names.length) t += ' Also tracked: ' + names.join(', ') + '. When a tag is about them, put their name last, like [ate 300 ' + names[0] + '].'
-    state.memory.frontMemory = t + ']'
+    if (names.length) tags += ' Others: name last, [ate 300 ' + names[0] + '].'
+    tags += ']'
+  }
+  if (CFG.TAG_PLACE === 'front') {   // the very end of the context (strongest, but most likely to be echoed)
+    state.memory.authorsNote = note.trim()
+    state.memory.frontMemory = tags
   } else {
+    state.memory.authorsNote = (note + ' ' + tags).trim()
     state.memory.frontMemory = ''
   }
 }

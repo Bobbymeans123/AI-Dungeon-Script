@@ -1,6 +1,6 @@
 # What to paste into AI Dungeon
 
-Input and Output are the same for both scenarios. Only the Library tab differs.
+Input and Output are the same for both scenarios. Only the Library tab differs. After the Player setup card change, **re-paste `bt_input.js` too** (Output is unchanged).
 
 | Tab | Scenario 1: you are Rue | Scenario 2: you are anyone else |
 |---|---|---|
@@ -15,7 +15,7 @@ Paste each file's whole contents into its tab. The Library files are generated (
 Whitney is a tracked character and you are Rue (168 cm, 54 kg, DEX 13), seeded on the first turn. Unnamed turns, "You order ..." and "Rue ..." all go to Rue. Game pace (silly preset) is on.
 
 ## Scenario 2 (custom player)
-Whitney is tracked, and you get a plain default player sheet (165 cm, 60 kg) with no name. Fill it in yourself, for example:
+Whitney is tracked, and you get a plain default player sheet (165 cm, 60 kg) with no name. Fill it in by editing the story card **"Player setup"** (created on the first turn; one line `name= height= weight= bodyfat= underbust= bust= waist= hips= pattern=even look=athletic gland= potential=`; blank = keep the default; a bad value is skipped and named in the status line), or with commands, for example:
 `:set height 170`, `:set weight 60`, `:set bodyfat 22` (or `:sheet add Name ...` for other characters). Unnamed turns and "You order ..." go to your sheet. Game pace (silly preset) is on.
 
 ## Notes
